@@ -2,3 +2,7 @@
 # tools/sync_from_project.sh copies each one into project/Content/.
 MetaHumans/MH_CH_Abby5/BP_MH_CH_Abby8.uasset
 MetaHumans/MH_CH_Abby5/Body/ABP_Abby.uasset
+Abby_Animation/Enhanced/ABP_Abby_Enhanced.uasset
+Abby_Animation/Enhanced/AbbyWalk_Sync.uasset
+Abby_Animation/Enhanced/AbbyJog_Sync.uasset
+Abby_Animation/Enhanced/AbbyRun_Sync.uasset

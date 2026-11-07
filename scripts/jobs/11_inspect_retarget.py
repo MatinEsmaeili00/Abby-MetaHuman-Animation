@@ -9,8 +9,11 @@ for side in (unreal.RetargetSourceOrTarget.SOURCE, unreal.RetargetSourceOrTarget
         rc = unreal.IKRigController.get_controller(rig)
         print("  mesh", rc.get_skeletal_mesh().get_path_name() if rc.get_skeletal_mesh() else None)
         print("  root", rc.get_retarget_root())
-        for ch in rc.get_retarget_chains():
-            print("  chain", ch.chain_name, ch.start_bone.bone_name, "->", ch.end_bone.bone_name, "goal", ch.ik_goal_name)
+        chains = rc.get_retarget_chains()
+        if chains: print("  BoneChain fields:", [x for x in dir(chains[0]) if not x.startswith("_") and not x.startswith("get") and not x.startswith("set")][:20])
+        for ch in chains:
+            d = {k: str(getattr(ch, k)) for k in dir(ch) if k in ("chain_name","start_bone","end_bone","ik_goal_name","start","end","goal")}
+            print("  chain", d)
         print("  goals", [str(g.get_editor_property("goal_name")) for g in rc.get_all_goals()])
         print("  solvers", rc.get_num_solvers())
 try:
