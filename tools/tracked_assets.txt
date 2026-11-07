@@ -6,3 +6,9 @@ Abby_Animation/Enhanced/ABP_Abby_Enhanced.uasset
 Abby_Animation/Enhanced/AbbyWalk_Sync.uasset
 Abby_Animation/Enhanced/AbbyJog_Sync.uasset
 Abby_Animation/Enhanced/AbbyRun_Sync.uasset
+Abby_Animation/Enhanced/ABP_Abby_Timeline.uasset
+Blueprints/BP_PlayerController.uasset
+Blueprints/BP_SpeedSlider.uasset
+Widget/WB_AmationTimeline.uasset
+Widget/WB_AnatomyViewSwitcher.uasset
+Widget/WB_PawnSwitcher.uasset

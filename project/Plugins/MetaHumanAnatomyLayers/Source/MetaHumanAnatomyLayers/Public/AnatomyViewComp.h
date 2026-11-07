@@ -32,6 +32,15 @@ struct METAHUMANANATOMYLAYERS_API FAnatomyLayerDef
 	 *  The first (outermost) layer also gets every visible mesh that no other layer claims (body, face, hair, clothes...). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Anatomy")
 	TArray<FName> ComponentNamesOrTags;
+
+	/** Optional "x-ray" shell: once this layer has faded to GhostBelowOpacity or less, its meshes switch to this
+	 *  material instead of disappearing, so the outline stays visible (e.g. the legs where there's no inner layer). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Anatomy")
+	TSoftObjectPtr<UMaterialInterface> GhostMaterial;
+
+	/** 0 = no ghost (the layer just disappears). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Anatomy", meta=(ClampMin="0", ClampMax="1"))
+	float GhostBelowOpacity = 0.f;
 };
 
 /** How one material slot is faded. */
@@ -59,8 +68,12 @@ struct FAnatomyFadeTarget
 	UPROPERTY() TArray<FAnatomyFadeSlot> Slots;
 	UPROPERTY() EVisibilityBasedAnimTickOption OriginalTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPose;
 
+	enum class EMaterials : uint8 { Original, Faders, Ghost };
+
 	float AppliedOpacity = -1.f;
-	bool bFadersOn = false;
+	EMaterials Materials = EMaterials::Original;
+	bool bHidden = false;
+	bool bInitialized = false;
 };
 
 USTRUCT()
@@ -70,6 +83,8 @@ struct FAnatomyLayerRuntime
 
 	UPROPERTY() FName LayerName;
 	UPROPERTY() TArray<FAnatomyFadeTarget> Targets;
+	UPROPERTY() TObjectPtr<UMaterialInterface> Ghost = nullptr;
+	float GhostBelowOpacity = 0.f;
 	float Opacity = 1.f;
 };
 
@@ -78,7 +93,8 @@ struct FAnatomyLayerRuntime
  * With the default layers: 0 = skin, 0.5 = muscles, 1 = skeleton. In between, the outer layer fades out
  * (dithered via the material's "Fade" parameter, which MetaHuman skin/eye/teeth/hair materials already have)
  * and the inner layers fade in during the first part of the slider.
- * Fully faded meshes are hidden; skeletal meshes that are hidden keep ticking so Leader Pose followers keep animating.
+ * Fully faded meshes are hidden (or switch to the layer's x-ray GhostMaterial); hidden skeletal meshes keep ticking
+ * so Leader Pose followers keep animating.
  */
 UCLASS(ClassGroup=(Anatomy), meta=(BlueprintSpawnableComponent), DisplayName="Anatomy View")
 class METAHUMANANATOMYLAYERS_API UAnatomyViewComp : public UActorComponent
@@ -166,7 +182,8 @@ private:
 	void BuildRuntime();
 	void RestoreAll();
 	void ApplyDepth(float Depth);
-	void ApplyOpacity(FAnatomyFadeTarget& Target, float Opacity);
+	void ApplyOpacity(FAnatomyFadeTarget& Target, float Opacity, UMaterialInterface* Ghost = nullptr, float GhostBelowOpacity = 0.f);
+	void SetMaterials(FAnatomyFadeTarget& Target, FAnatomyFadeTarget::EMaterials Materials, UMaterialInterface* Ghost);
 	int32 FindLayerFor(const UMeshComponent* Mesh) const;
 	float ComputeLayerOpacity(int32 LayerIndex, float Depth) const;
 

@@ -33,7 +33,9 @@ UAnatomyViewComp::UAnatomyViewComp()
 
 	HiddenMaterial = TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/MetaHumanAnatomyLayers/Anatomy/Materials/M_Anatomy_Hidden.M_Anatomy_Hidden")));
 
-	Layers.Emplace(TEXT("Skin"),     TArray<FName>{ TEXT("SkinPart") });
+	FAnatomyLayerDef& Skin = Layers.Emplace_GetRef(TEXT("Skin"), TArray<FName>{ TEXT("SkinPart") });
+	Skin.GhostMaterial = TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/MetaHumanAnatomyLayers/Anatomy/Materials/M_Anatomy_XRay.M_Anatomy_XRay")));
+	Skin.GhostBelowOpacity = 0.15f;
 	Layers.Emplace(TEXT("Muscles"),  TArray<FName>{ TEXT("MuscleMesh"), TEXT("MusclePart") });
 	Layers.Emplace(TEXT("Skeleton"), TArray<FName>{ TEXT("SkeletonMesh"), TEXT("SkeletonPart") });
 }
@@ -81,6 +83,8 @@ void UAnatomyViewComp::BuildRuntime()
 	for (int32 LayerIndex = 0; LayerIndex < Layers.Num(); ++LayerIndex)
 	{
 		Runtime[LayerIndex].LayerName = Layers[LayerIndex].LayerName;
+		Runtime[LayerIndex].Ghost = Layers[LayerIndex].GhostMaterial.LoadSynchronous();
+		Runtime[LayerIndex].GhostBelowOpacity = Layers[LayerIndex].GhostBelowOpacity;
 	}
 
 	AActor* Owner = GetOwner();
@@ -172,7 +176,7 @@ void UAnatomyViewComp::RestoreAll()
 	{
 		for (FAnatomyFadeTarget& Target : Layer.Targets)
 		{
-			Target.AppliedOpacity = -1.f;
+			Target.bInitialized = false;
 			ApplyOpacity(Target, 1.f);
 		}
 	}
@@ -232,82 +236,108 @@ void UAnatomyViewComp::ApplyDepth(float Depth)
 		Layer.Opacity = ComputeLayerOpacity(LayerIndex, Depth);
 		for (FAnatomyFadeTarget& Target : Layer.Targets)
 		{
-			ApplyOpacity(Target, Layer.Opacity);
+			ApplyOpacity(Target, Layer.Opacity, Layer.Ghost, Layer.GhostBelowOpacity);
 		}
 	}
 	OnRevealDepthChanged.Broadcast(Depth);
 }
 
-void UAnatomyViewComp::ApplyOpacity(FAnatomyFadeTarget& Target, float Opacity)
+void UAnatomyViewComp::SetMaterials(FAnatomyFadeTarget& Target, FAnatomyFadeTarget::EMaterials Materials, UMaterialInterface* Ghost)
+{
+	UMeshComponent* Mesh = Target.Mesh.Get();
+	if (!Mesh || (Target.bInitialized && Target.Materials == Materials))
+	{
+		return;
+	}
+
+	for (int32 SlotIndex = 0; SlotIndex < Target.Slots.Num(); ++SlotIndex)
+	{
+		const FAnatomyFadeSlot& Slot = Target.Slots[SlotIndex];
+		UMaterialInterface* Material = Slot.Original;
+		if (Materials == FAnatomyFadeTarget::EMaterials::Ghost)
+		{
+			Material = Ghost;
+		}
+		else if (Materials == FAnatomyFadeTarget::EMaterials::Faders)
+		{
+			// Slots without a fade parameter (e.g. the eye occlusion shell) are hidden while fading.
+			Material = Slot.Fader ? Slot.Fader.Get() : (LoadedHiddenMaterial ? LoadedHiddenMaterial.Get() : Slot.Original.Get());
+		}
+		Mesh->SetMaterial(SlotIndex, Material);
+	}
+	Target.Materials = Materials;
+}
+
+void UAnatomyViewComp::ApplyOpacity(FAnatomyFadeTarget& Target, float Opacity, UMaterialInterface* Ghost, float GhostBelowOpacity)
 {
 	UMeshComponent* Mesh = Target.Mesh.Get();
 	if (!Mesh)
 	{
 		return;
 	}
-
-	const float Effective = (AnatomyView::IsGroom(Mesh) && Opacity < HideGroomsBelowOpacity) ? 0.f : Opacity;
-	if (FMath::IsNearlyEqual(Effective, Target.AppliedOpacity, 0.0005f))
+	if (Target.bInitialized && FMath::IsNearlyEqual(Opacity, Target.AppliedOpacity, 0.0005f))
 	{
 		return;
 	}
-	Target.AppliedOpacity = Effective;
+
+	const bool bGroom = AnatomyView::IsGroom(Mesh);
+	const bool bGhost = Ghost && GhostBelowOpacity > 0.f && Opacity <= GhostBelowOpacity;
+
+	// Hair strands don't dither well and have no shell look: they go away early.
+	const bool bHide = bGroom
+		? (bGhost || Opacity < HideGroomsBelowOpacity)
+		: (!bGhost && Opacity <= AnatomyView::Gone);
 
 	USkinnedMeshComponent* Skinned = Cast<USkinnedMeshComponent>(Mesh);
-
-	if (Effective <= AnatomyView::Gone)
+	if (bHide)
 	{
-		// Hidden meshes normally stop animating; keep the pose ticking so Leader Pose followers
-		// (the muscle / skeleton layers follow Body) keep moving.
-		if (Skinned)
+		if (!Target.bHidden || !Target.bInitialized)
 		{
-			Skinned->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
-		}
-		Mesh->SetVisibility(false);
-		return;
-	}
-
-	if (!Mesh->IsVisible())
-	{
-		Mesh->SetVisibility(true);
-	}
-	if (Skinned)
-	{
-		Skinned->VisibilityBasedAnimTickOption = Target.OriginalTickOption;
-	}
-
-	if (Effective >= AnatomyView::Opaque)
-	{
-		// Fully opaque: back to the original materials (no dithering, original eye shell etc.).
-		if (Target.bFadersOn)
-		{
-			for (int32 SlotIndex = 0; SlotIndex < Target.Slots.Num(); ++SlotIndex)
+			// Hidden meshes normally stop animating; keep the pose ticking so Leader Pose followers
+			// (the muscle / skeleton layers follow Body) keep moving.
+			if (Skinned)
 			{
-				Mesh->SetMaterial(SlotIndex, Target.Slots[SlotIndex].Original);
+				Skinned->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 			}
-			Target.bFadersOn = false;
+			Mesh->SetVisibility(false);
+			Target.bHidden = true;
 		}
-		return;
+	}
+	else
+	{
+		if (Target.bHidden || !Target.bInitialized || !Mesh->IsVisible())
+		{
+			Mesh->SetVisibility(true);
+			if (Skinned)
+			{
+				Skinned->VisibilityBasedAnimTickOption = Target.OriginalTickOption;
+			}
+			Target.bHidden = false;
+		}
+
+		if (bGhost)
+		{
+			SetMaterials(Target, FAnatomyFadeTarget::EMaterials::Ghost, Ghost);
+		}
+		else if (Opacity >= AnatomyView::Opaque)
+		{
+			SetMaterials(Target, FAnatomyFadeTarget::EMaterials::Original, nullptr);
+		}
+		else
+		{
+			SetMaterials(Target, FAnatomyFadeTarget::EMaterials::Faders, nullptr);
+			for (const FAnatomyFadeSlot& Slot : Target.Slots)
+			{
+				if (Slot.Fader)
+				{
+					Slot.Fader->SetScalarParameterValue(Slot.Parameter, Slot.FullValue * Opacity);
+				}
+			}
+		}
 	}
 
-	if (!Target.bFadersOn)
-	{
-		for (int32 SlotIndex = 0; SlotIndex < Target.Slots.Num(); ++SlotIndex)
-		{
-			const FAnatomyFadeSlot& Slot = Target.Slots[SlotIndex];
-			UMaterialInterface* Material = Slot.Fader ? Slot.Fader.Get() : (LoadedHiddenMaterial ? LoadedHiddenMaterial.Get() : Slot.Original.Get());
-			Mesh->SetMaterial(SlotIndex, Material);
-		}
-		Target.bFadersOn = true;
-	}
-
-	for (const FAnatomyFadeSlot& Slot : Target.Slots)
-	{
-		if (Slot.Fader)
-		{
-			Slot.Fader->SetScalarParameterValue(Slot.Parameter, Slot.FullValue * Effective);
-		}
-	}
+	Target.AppliedOpacity = Opacity;
+	Target.bInitialized = true;
 }
 
 void UAnatomyViewComp::SetRevealDepth(float Depth, bool bAnimate)

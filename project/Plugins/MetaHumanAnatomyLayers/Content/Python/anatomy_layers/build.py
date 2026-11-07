@@ -301,8 +301,106 @@ def rename_bones(mesh, bone_map):
 
 
 # ---------------------------------------------------------------------------------------- build
+FADE_MATERIALS = [DEST_DIR + "/Materials/M_Anatomy_Muscle", DEST_DIR + "/Materials/M_Anatomy_BlockColour"]
+HIDDEN_MATERIAL = DEST_DIR + "/Materials/M_Anatomy_Hidden"
+DITHER_FUNCTION = "/Engine/Functions/Engine_MaterialFunctions02/Utility/DitherTemporalAA"
+
+
+def add_fade_to_materials(paths=None):
+    """Give the anatomy materials the MetaHuman-style "Fade" scalar (1 = visible, 0 = gone, dithered)
+    so UAnatomyViewComp can fade them, and create the always-invisible M_Anatomy_Hidden."""
+    mel = unreal.MaterialEditingLibrary
+    dither = unreal.load_asset(DITHER_FUNCTION)
+    for path in paths or FADE_MATERIALS:
+        mat = unreal.load_asset(path)
+        if "Fade" in [str(n) for n in mel.get_scalar_parameter_names(mat)]:
+            continue
+        mat.set_editor_property("blend_mode", unreal.BlendMode.BLEND_MASKED)
+        # DitherTemporalAA outputs Fade + noise - 0.5; clipping at 0.5 makes coverage == Fade (0.333 would leave 17% at Fade 0)
+        mat.set_editor_property("opacity_mask_clip_value", 0.5)
+        param = mel.create_material_expression(mat, unreal.MaterialExpressionScalarParameter, -700, 700)
+        param.set_editor_property("parameter_name", "Fade")
+        param.set_editor_property("default_value", 1.0)
+        param.set_editor_property("group", "Anatomy")
+        call = mel.create_material_expression(mat, unreal.MaterialExpressionMaterialFunctionCall, -450, 700)
+        call.set_material_function(dither)
+        mel.connect_material_expressions(param, "", call, "Alpha Threshold")
+        mel.connect_material_property(call, "", unreal.MaterialProperty.MP_OPACITY_MASK)
+        mel.recompile_material(mat)
+        EAL.save_loaded_asset(mat, only_if_is_dirty=False)
+
+    if not EAL.does_asset_exist(HIDDEN_MATERIAL):
+        folder, name = HIDDEN_MATERIAL.rsplit("/", 1)
+        mat = unreal.AssetToolsHelpers.get_asset_tools().create_asset(name, folder, unreal.Material, unreal.MaterialFactoryNew())
+        mat.set_editor_property("blend_mode", unreal.BlendMode.BLEND_MASKED)
+        zero = mel.create_material_expression(mat, unreal.MaterialExpressionConstant, -300, 200)
+        zero.set_editor_property("r", 0.0)
+        mel.connect_material_property(zero, "", unreal.MaterialProperty.MP_OPACITY_MASK)
+        mat.set_editor_property("two_sided", True)
+        mat.set_editor_property("used_with_skeletal_mesh", True)
+        mel.recompile_material(mat)
+        EAL.save_loaded_asset(mat, only_if_is_dirty=False)
+
+
+XRAY_MATERIAL = DEST_DIR + "/Materials/M_Anatomy_XRay"
+
+
+def create_xray_material(path=XRAY_MATERIAL, overwrite=False):
+    """Translucent, unlit fresnel "x-ray" shell. UAnatomyViewComp swaps the skin to it once the skin has
+    faded below the layer's GhostBelowOpacity, so the body outline (e.g. the legs) stays readable."""
+    mel = unreal.MaterialEditingLibrary
+    if EAL.does_asset_exist(path):
+        if not overwrite:
+            return unreal.load_asset(path)
+        EAL.delete_asset(path)
+    folder, name = path.rsplit("/", 1)
+    mat = unreal.AssetToolsHelpers.get_asset_tools().create_asset(name, folder, unreal.Material, unreal.MaterialFactoryNew())
+    mat.set_editor_property("blend_mode", unreal.BlendMode.BLEND_TRANSLUCENT)
+    mat.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
+    mat.set_editor_property("used_with_skeletal_mesh", True)
+
+    def expr(cls, x, y, **props):
+        e = mel.create_material_expression(mat, cls, x, y)
+        for k, v in props.items():
+            e.set_editor_property(k, v)
+        return e
+
+    fresnel = expr(unreal.MaterialExpressionFresnel, -900, 0, exponent=2.5)
+    tint = expr(unreal.MaterialExpressionVectorParameter, -900, -250, parameter_name="Tint",
+                default_value=unreal.LinearColor(0.45, 0.72, 1.0, 1.0), group="XRay")
+    rim_bright = expr(unreal.MaterialExpressionScalarParameter, -900, 200, parameter_name="RimBrightness", default_value=2.0, group="XRay")
+    core_bright = expr(unreal.MaterialExpressionScalarParameter, -900, 300, parameter_name="CoreBrightness", default_value=0.08, group="XRay")
+    rim_opacity = expr(unreal.MaterialExpressionScalarParameter, -900, 450, parameter_name="RimOpacity", default_value=0.6, group="XRay")
+    core_opacity = expr(unreal.MaterialExpressionScalarParameter, -900, 550, parameter_name="CoreOpacity", default_value=0.04, group="XRay")
+
+    rim = expr(unreal.MaterialExpressionMultiply, -600, 150)
+    mel.connect_material_expressions(fresnel, "", rim, "A")
+    mel.connect_material_expressions(rim_bright, "", rim, "B")
+    glow = expr(unreal.MaterialExpressionAdd, -450, 150)
+    mel.connect_material_expressions(rim, "", glow, "A")
+    mel.connect_material_expressions(core_bright, "", glow, "B")
+    emissive = expr(unreal.MaterialExpressionMultiply, -300, 0)
+    mel.connect_material_expressions(tint, "", emissive, "A")
+    mel.connect_material_expressions(glow, "", emissive, "B")
+    mel.connect_material_property(emissive, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+
+    rim_a = expr(unreal.MaterialExpressionMultiply, -600, 450)
+    mel.connect_material_expressions(fresnel, "", rim_a, "A")
+    mel.connect_material_expressions(rim_opacity, "", rim_a, "B")
+    alpha = expr(unreal.MaterialExpressionAdd, -450, 450)
+    mel.connect_material_expressions(rim_a, "", alpha, "A")
+    mel.connect_material_expressions(core_opacity, "", alpha, "B")
+    mel.connect_material_property(alpha, "", unreal.MaterialProperty.MP_OPACITY)
+
+    mel.recompile_material(mat)
+    EAL.save_loaded_asset(mat, only_if_is_dirty=False)
+    return mat
+
+
 def build_all(metahuman_body=DEFAULT_METAHUMAN_BODY, overwrite=False):
     material_map = copy_materials(overwrite=overwrite)
+    add_fade_to_materials()
+    create_xray_material()
     bone_map = compute_bone_map(unreal.load_asset(MESH_SOURCES[0][0]), unreal.load_asset(metahuman_body))
     meshes = import_meshes(material_map, bone_map, overwrite=overwrite)
     for mesh in meshes:
@@ -320,11 +418,12 @@ def _modifier_for(mesh):
 
 
 # ------------------------------------------------------------------------------------ blueprint
-def wire_blueprint(bp_path, layers=None, body_name="Body"):
+def wire_blueprint(bp_path, layers=None, body_name="Body", add_view_component=True):
     """Point anatomy components at the plugin meshes, parent them to Body and let Leader Pose drive them.
 
     layers: {component variable name: mesh path}. Missing components are created under Body.
     The stock MetaHuman construction script (EnableMasterPose on Body's children) sets Leader Pose.
+    add_view_component: also add an "AnatomyView" component (UAnatomyViewComp: skin -> muscles -> skeleton slider).
     """
     layers = layers or {"MuscleMesh": ANATOMY_MESHES[0], "SkeletonMesh": ANATOMY_MESHES[1]}
     bp = unreal.load_asset(bp_path)
@@ -360,6 +459,18 @@ def wire_blueprint(bp_path, layers=None, body_name="Body"):
         comp.set_editor_property("relative_rotation", unreal.Rotator(0, 0, 0))
         comp.set_editor_property("relative_scale3d", unreal.Vector(1, 1, 1))
         print(f"{comp_name}: {mesh_path} under {body_name}")
+
+    if add_view_component and hasattr(unreal, "AnatomyViewComp"):
+        hs = handles()
+        if not any(isinstance(obj, unreal.AnatomyViewComp) for _, obj in hs.values()):
+            actor_h = sds.k2_gather_subobject_data_for_blueprint(bp)[0]
+            params = unreal.AddNewSubobjectParams(parent_handle=actor_h, new_class=unreal.AnatomyViewComp,
+                                                  blueprint_context=bp)
+            new_h, fail = sds.add_new_subobject(params)
+            if not fail.is_empty():
+                raise RuntimeError(f"add AnatomyView failed: {fail}")
+            sds.rename_subobject(new_h, unreal.Text("AnatomyView"))
+            print("AnatomyView component added")
     unreal.BlueprintEditorLibrary.compile_blueprint(bp)
     EAL.save_loaded_asset(bp, only_if_is_dirty=False)
     return True
