@@ -32,6 +32,19 @@ Approach: give the anatomy meshes **MetaHuman bone names** so they can use plain
 - [x] "After" screenshots and write-up: [docs/02-animation.md](docs/02-animation.md)
 - [ ] Cleanup: delete the experimental `/Game/Abby_Animation/Fixed/` and `BS_Abby_Locomotion` (with the editor closed)
 
+## 4. UI sliders (anatomy view + animation timeline)
+Write-up: [docs/03-ui-sliders.md](docs/03-ui-sliders.md). Architecture kept: the PlayerController handles input and adds the widgets; the widgets only forward clicks; the work is done by components on the pawn. Switching the pawn switches what the same buttons do.
+- [x] Inspect the existing C++, widgets, controller, game mode and pawn components (jobs 30–33)
+- [x] Test the MetaHuman `Fade` dither on skin, face and hair ([shot](docs/screenshots/04_fade_test_head.png))
+- [x] Plugin materials: muscle and bone materials Masked + `Fade` dither; add `M_Anatomy_Hidden` (job 34)
+- [~] `UAnatomyViewComp` (plugin C++ module): data-driven layers (Skin → Muscles → Skeleton), one "reveal depth" slider, animated layer buttons, hides fully faded layers while keeping leader pose ticking
+- [~] `UAnimationTimelineComp` rewrite: play / pause / reverse / scrub with looping; drives an Anim BP through `IAnimationTimelineSource`, or a single clip
+- [~] `UCPP_LocomotionAnimInstance` + `ABP_Abby_Timeline`: walk / jog / run evaluated at an explicit gait-cycle phase (0 = left-foot contact), so the timeline can scrub and play in reverse with every layer following
+- [~] Widgets: thin forwarders that rebind when the pawn changes (`OnPossessedPawnChanged`) and grey out if the pawn lacks the component
+- [~] Controller fixes: `Super::BeginPlay`, placeholder-manager lookup, speed slider back on, pawn switching for `WB_PawnSwitcher`
+- [~] C++ cleanup: remove the editor-only `UCPP_WBP_SpeedSlider` (no assets use it); drop stray includes (`gsl`, `SWarningOrErrorBox`, `TaskSyncManager`)
+- [ ] Build, wire assets, test in PIE, screenshots, write-up
+
 ## Housekeeping
 - [x] Python remote execution turned back **off** (it can't work on macOS: a socket bound to 127.0.0.1 never receives multicast). The editor bridge is `tools/claude_bridge.py`, started by `tools/launch_editor.sh`
 - [ ] `BP_MH_CH_Abby8` EventTick still casts to `ABP_Abby` to push Speed; with `ABP_Abby_Enhanced` that cast just fails (harmless). Remove it if you want
