@@ -11,10 +11,11 @@ Status key: `[x]` done · `[~]` in progress · `[ ]` not started · `[!]` blocke
 ## 1. Make every layer follow the run: portable plugin `MetaHumanAnatomyLayers`
 Approach: give the anatomy meshes **MetaHuman bone names** so they can use plain **Leader Pose** on Abby's `Body`, like the face does. That means no extra Anim BP, no runtime cost, the bones take Abby's proportions, and the meshes follow any animation (Anim BP, Sequencer, LiveLink).
 - [x] Create the plugin `Plugins/MetaHumanAnatomyLayers` (content + Python tools)
-- [~] Copy the Emil muscle and skeleton meshes into the plugin with their own skeleton (FBX round trip), plus materials and textures, so there are no `/Game` references
-- [~] Rename limb bones: humerus→upperarm, ulna→lowerarm, femur→thigh, tibia→calf, ankle→foot; match twist bones by position along each limb (dry run done: Emil `ulna_twist_01` ↔ MH `lowerarm_twist_02`, so name-guessing would have been wrong)
-- [ ] `BP_MH_CH_Abby8`: attach `MuscleMesh` and `SkeletonMesh` to `Body`, switch them to the plugin meshes, and let `EnableMasterPose` set leader pose
-- [ ] Verify in the viewport and in Play-In-Editor at walk, jog and run speeds; check that the anatomy view switcher (C++) still lines up
+- [x] Copy the Emil muscle and skeleton meshes into the plugin with their own skeleton (FBX round trip), plus materials and textures, so there are no `/Game` references
+- [x] Rename limb bones: humerus→upperarm, ulna→lowerarm, femur→thigh, tibia→calf, ankle→foot; match twist bones by position along each limb (dry run done: Emil `ulna_twist_01` ↔ MH `lowerarm_twist_02`, so name-guessing would have been wrong)
+- [x] `BP_MH_CH_Abby8`: attach `MuscleMesh` and `SkeletonMesh` to `Body`, switch them to the plugin meshes, and let `EnableMasterPose` set leader pose ([after](docs/screenshots/01_after_leaderpose_side.png))
+- [ ] Optional: material "Inset" (push muscles in along the normal a few mm) so they don't poke through the skin when it isn't faded
+- [~] Verify in the viewport (done: the pose matches) and in Play-In-Editor at walk, jog and run speeds; check that the anatomy view switcher (C++) still lines up
 - [ ] Plugin README: how to drop it into another project
 
 ## 2. Fix Abby's retargeted animations (walk / jog / run)
