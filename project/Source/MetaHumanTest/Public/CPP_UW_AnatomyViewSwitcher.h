@@ -30,6 +30,7 @@ public:
 protected:
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
 	// These names must match the widget names in the Designer.
 	UPROPERTY(meta=(BindWidget))
@@ -59,4 +60,5 @@ protected:
 
 private:
 	bool bDragging = false;
+	float RebindCooldown = 0.f;
 };

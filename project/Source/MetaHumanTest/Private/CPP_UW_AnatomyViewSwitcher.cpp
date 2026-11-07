@@ -46,6 +46,22 @@ void UCPP_UW_AnatomyViewSwitcher::NativeDestruct()
 	Super::NativeDestruct();
 }
 
+void UCPP_UW_AnatomyViewSwitcher::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+	Super::NativeTick(MyGeometry, InDeltaTime);
+
+	// The pawn's components can be re-created (e.g. its construction script re-runs): look again, twice a second.
+	if (!IsValid(AnatomyComp))
+	{
+		RebindCooldown -= InDeltaTime;
+		if (RebindCooldown <= 0.f)
+		{
+			RebindCooldown = 0.5f;
+			BindToPawn(GetOwningPlayerPawn());
+		}
+	}
+}
+
 void UCPP_UW_AnatomyViewSwitcher::HandlePossessedPawnChanged(APawn* OldPawn, APawn* NewPawn)
 {
 	BindToPawn(NewPawn);
@@ -53,7 +69,7 @@ void UCPP_UW_AnatomyViewSwitcher::HandlePossessedPawnChanged(APawn* OldPawn, APa
 
 void UCPP_UW_AnatomyViewSwitcher::BindToPawn(APawn* Pawn)
 {
-	if (AnatomyComp)
+	if (IsValid(AnatomyComp))
 	{
 		AnatomyComp->OnRevealDepthChanged.RemoveDynamic(this, &UCPP_UW_AnatomyViewSwitcher::HandleRevealDepthChanged);
 	}

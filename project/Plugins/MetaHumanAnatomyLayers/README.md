@@ -1,6 +1,7 @@
 # MetaHuman Anatomy Layers (UE 5.8 plugin)
 
 Muscle and skeleton layers that follow a MetaHuman body's animation. There's no extra Anim Blueprint and no per-frame cost.
+It also contains an **Anatomy View** component that peels the character from skin to muscles to skeleton with one slider value, like an anatomy app.
 
 ## How it works
 
@@ -20,9 +21,29 @@ With matching bone names, the anatomy meshes use **Leader Pose** on the MetaHuma
 | `/MetaHumanAnatomyLayers/Anatomy/Meshes/SKM_Anatomy_Skeleton_UpperBody` | Upper-body skeleton (bones) mesh |
 | `/MetaHumanAnatomyLayers/Anatomy/Meshes/SKM_Anatomy_Muscles_UpperBody_Skeleton` | Their shared Skeleton asset |
 | `/MetaHumanAnatomyLayers/Anatomy/Materials`, `/Textures` | Self-contained copies of the muscle and bone materials |
-| `Content/Python/anatomy_layers/build.py` | Editor tools: `build_all()` re-creates the meshes from an anatomy source; `wire_blueprint()` attaches the layers to a MetaHuman Blueprint |
+| `/MetaHumanAnatomyLayers/Anatomy/Materials/M_Anatomy_MuscleFade` | Masked muscle material with a dithered `Fade` (1 = visible, 0 = gone), used while the muscle layer fades |
+| `/MetaHumanAnatomyLayers/Anatomy/Materials/M_Anatomy_XRay` | Translucent fresnel "x-ray" shell the skin turns into once it has faded below 15% |
+| `/MetaHumanAnatomyLayers/Anatomy/Materials/M_Anatomy_Hidden` | Always-invisible material for slots that can't fade |
+| `Source/MetaHumanAnatomyLayers` → **`UAnatomyViewComp`** ("Anatomy View") | Component for the pawn: `SetRevealDepth(0..1)`, `ShowLayer(i)`, `OnRevealDepthChanged`. Layers are data (`Layers` array: Skin / Muscles / Skeleton by default) |
+| `Content/Python/anatomy_layers/build.py` | Editor tools: `build_all()` re-creates the meshes and materials from an anatomy source; `wire_blueprint()` attaches the layers **and the Anatomy View component** to a MetaHuman Blueprint |
 
-Nothing in `Anatomy/` references `/Game`, so the folder works in any project.
+Nothing in `Anatomy/` references `/Game`, so the folder works in any project. It's a C++ plugin now (one runtime module, no dependencies beyond Core / Engine), so the project needs to be a C++ project; Unreal builds the module the first time you open it.
+
+## Anatomy View component
+
+Add **Anatomy View** to the pawn (`wire_blueprint` does it). From UI or Blueprint:
+
+- `SetRevealDepth(Depth)`: 0 = whole character, 0.5 = muscles, 1 = skeleton (with the default three layers). Use it for a slider.
+- `ShowLayer(Index)`: animates to a layer. Use it for buttons.
+- `OnRevealDepthChanged`: keeps a slider in sync while a button animates.
+
+How each layer fades:
+
+- **Skin:** MetaHuman skin, eye, teeth and hair materials already have a `Fade` scalar; the component drives it through dynamic material instances. Below 15% the skin switches to `M_Anatomy_XRay`, so the outline stays visible. Hair strands hide below 50%.
+- **Muscles:** swap to `M_Anatomy_MuscleFade` while fading (layer `FadeMaterial`) and show their detailed material at full opacity.
+- **Hidden meshes:** fully faded meshes are hidden. A hidden `Body` keeps ticking its pose, so the Leader Pose layers keep animating.
+
+**Your own layers:** edit `Layers` on the component. Each entry lists component names or tags (outside → in); the first layer also takes every visible mesh nobody else claims. Each layer can also set its own `FadeMaterial` and `GhostMaterial`.
 
 ## Use it in another project
 
@@ -32,7 +53,7 @@ Nothing in `Anatomy/` references `/Game`, so the folder works in any project.
    - Anim Class: empty; Use Bounds From Leader Pose Component: on
 3. Leader Pose: the stock MetaHuman construction script (`EnableMasterPose` on Body's children) sets it automatically. Otherwise call **Set Leader Pose Component (Body)** on both in BeginPlay or the construction script.
 
-With Python enabled, step 2 is one call:
+With Python enabled, step 2 (plus the Anatomy View component) is one call:
 
 ```python
 from anatomy_layers import build

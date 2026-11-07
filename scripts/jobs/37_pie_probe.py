@@ -29,7 +29,7 @@ elif kind == "time" and tl:
     tl.pause()
     tl.set_normalized_time(float(arg))
 elif kind == "speed" and pawn:
-    pawn.set_editor_property("speed", float(arg))
+    pawn.set_editor_property("speed", float(arg), unreal.PropertyAccessChangeNotifyMode.NEVER)  # no construction-script rerun
 elif kind == "switch" and pc:
     pc.switch_pawn(int(arg))
     pawn = pc.get_controlled_pawn()

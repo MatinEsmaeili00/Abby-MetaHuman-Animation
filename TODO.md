@@ -16,7 +16,7 @@ Approach: give the anatomy meshes **MetaHuman bone names** so they can use plain
 - [x] `BP_MH_CH_Abby8`: attach `MuscleMesh` and `SkeletonMesh` to `Body`, switch them to the plugin meshes, and let `EnableMasterPose` set leader pose ([after](docs/screenshots/01_after_leaderpose_side.png))
 - [ ] Optional: material "Inset" (push muscles in along the normal a few mm) so they don't poke through the skin when it isn't faded
 - [x] Verify in the viewport and in Simulate at running speed ([run](docs/screenshots/02_run_side_b.png), [front](docs/screenshots/02_run_front.png)) and at walk, jog and run speeds; 
-- [ ] Anatomy view switcher (C++ `CPP_UW_AnatomyViewSwitcher`): it looks for component tags `WholePart`, `SkeletonPart`, `FacePart`, but none of `BP_MH_CH_Abby8`'s components have them. This was already the case before this work. Without the tags it dereferences a null pointer when clicked. Add the tags (Body = WholePart, SkeletonMesh = SkeletonPart, Face = FacePart) or null-check in C++
+- [x] Anatomy view switcher: rewritten (section 4). The logic moved into `UAnatomyViewComp`, so no component tags are needed and there's no null-pointer crash
 - [x] Plugin README: how to drop it into another project ([README](project/Plugins/MetaHumanAnatomyLayers/README.md))
 
 ## 2. Fix Abby's retargeted animations (walk / jog / run)
@@ -36,18 +36,23 @@ Approach: give the anatomy meshes **MetaHuman bone names** so they can use plain
 Write-up: [docs/03-ui-sliders.md](docs/03-ui-sliders.md). Architecture kept: the PlayerController handles input and adds the widgets; the widgets only forward clicks; the work is done by components on the pawn. Switching the pawn switches what the same buttons do.
 - [x] Inspect the existing C++, widgets, controller, game mode and pawn components (jobs 30–33)
 - [x] Test the MetaHuman `Fade` dither on skin, face and hair ([shot](docs/screenshots/04_fade_test_head.png))
-- [x] Plugin materials: muscle and bone materials Masked + `Fade` dither; add `M_Anatomy_Hidden` (job 34)
-- [~] `UAnatomyViewComp` (plugin C++ module): data-driven layers (Skin → Muscles → Skeleton), one "reveal depth" slider, animated layer buttons, hides fully faded layers while keeping leader pose ticking
-- [~] `UAnimationTimelineComp` rewrite: play / pause / reverse / scrub with looping; drives an Anim BP through `IAnimationTimelineSource`, or a single clip
-- [~] `UCPP_LocomotionAnimInstance` + `ABP_Abby_Timeline`: walk / jog / run evaluated at an explicit gait-cycle phase (0 = left-foot contact), so the timeline can scrub and play in reverse with every layer following
-- [~] Widgets: thin forwarders that rebind when the pawn changes (`OnPossessedPawnChanged`) and grey out if the pawn lacks the component
-- [~] Controller fixes: `Super::BeginPlay`, placeholder-manager lookup, speed slider back on, pawn switching for `WB_PawnSwitcher`
-- [~] C++ cleanup: remove the editor-only `UCPP_WBP_SpeedSlider` (no assets use it); drop stray includes (`gsl`, `SWarningOrErrorBox`, `TaskSyncManager`)
-- [ ] Build, wire assets, test in PIE, screenshots, write-up
+- [x] Plugin materials: `M_Anatomy_MuscleFade` (fresh, dithered `Fade`), `M_Anatomy_XRay` (fresnel shell), `M_Anatomy_Hidden`; the Emil materials stay Opaque. Masking on the Emil-derived materials never clipped ([why](docs/03-ui-sliders.md#step-2-plugin-materials-jobs-34-38-40))
+- [x] `UAnatomyViewComp` (plugin C++ module): data-driven layers, reveal depth 0..1, animated `ShowLayer`, per-layer fade / x-ray ghost material, hidden Body keeps leader pose ticking
+- [x] `UAnimationTimelineComp` rewrite: play / pause / reverse / scrub / step, looping, Anim BP (interface) or single-clip mode
+- [x] `UCPP_LocomotionAnimInstance` + `ABP_Abby_Timeline`: walk / jog / run at an explicit gait-cycle phase (0 = left-foot contact)
+- [x] Widgets: thin forwarders; re-bind on `OnPossessedPawnChanged`; grey out without a component; recover if components are re-created
+- [x] Controller: `Super::BeginPlay`, placeholder-manager lookup fix, speed slider back, `SwitchPawn` for `WB_PawnSwitcher`
+- [x] C++ cleanup: removed editor-only `UCPP_WBP_SpeedSlider` (+ `UMGEditor` dependency), stray includes, null-safe mouse component with pitch clamp
+- [x] Verified in PIE: anatomy sweep, timeline scrub / reverse / pause, speed, pawn switch and back ([shots](docs/03-ui-sliders.md#step-5-verified-in-pie))
+- [ ] Optional: keyboard shortcuts (Space = play / pause, ← / → = step) through Enhanced Input actions in the controller
+- [ ] Optional: full-body skeleton (Emil is upper body only). Attach `BP_SkeletonModel`'s leg bones (femur, tibia, fibula, patella, foot) rigidly to Abby's thigh / calf / foot bones
+- [ ] Optional: labels on the anatomy and timeline buttons, and a "Gait cycle 42%" text (`TimeText`, an optional `BindWidget` in the timeline widget)
+- [ ] Widget layout: the anatomy buttons sit partly off-screen in a small viewport (fixed offsets from the centre); anchor them to the left edge
+- [ ] Perforce: the editor may have opened `M_Anatomy_MuscleTest` (a deleted test asset) for add. Revert it if `p4 opened` lists it
 
 ## Housekeeping
 - [x] Python remote execution turned back **off** (it can't work on macOS: a socket bound to 127.0.0.1 never receives multicast). The editor bridge is `tools/claude_bridge.py`, started by `tools/launch_editor.sh`
-- [ ] `BP_MH_CH_Abby8` EventTick still casts to `ABP_Abby` to push Speed; with `ABP_Abby_Enhanced` that cast just fails (harmless). Remove it if you want
+- [x] `BP_MH_CH_Abby8` EventTick cast to `ABP_Abby` removed (the auto-rotate stays)
 - [ ] Perforce: `BP_MH_CH_Abby8.uasset` was made writable locally (not checked out), and the new plugin and assets sit in the Uncontrolled changelist. Run `p4 reconcile` / submit when ready
 
 ## Out of scope (for now)

@@ -45,7 +45,7 @@ void UWCPP_AnimationTimeline::HandlePossessedPawnChanged(APawn* OldPawn, APawn* 
 
 void UWCPP_AnimationTimeline::BindToPawn(APawn* Pawn)
 {
-	if (TimelineComp)
+	if (IsValid(TimelineComp))
 	{
 		TimelineComp->OnPlayStateChanged.RemoveDynamic(this, &UWCPP_AnimationTimeline::HandlePlayStateChanged);
 	}
@@ -66,8 +66,15 @@ void UWCPP_AnimationTimeline::NativeTick(const FGeometry& MyGeometry, float InDe
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
 
-	if (!TimelineComp)
+	if (!IsValid(TimelineComp))
 	{
+		// The pawn's components can be re-created (e.g. its construction script re-runs): look again, twice a second.
+		RebindCooldown -= InDeltaTime;
+		if (RebindCooldown <= 0.f)
+		{
+			RebindCooldown = 0.5f;
+			BindToPawn(GetOwningPlayerPawn());
+		}
 		return;
 	}
 

@@ -65,4 +65,5 @@ protected:
 
 private:
 	bool bDragging = false;
+	float RebindCooldown = 0.f;
 };
