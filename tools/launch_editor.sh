@@ -7,7 +7,7 @@ ENGINE_APP="${ENGINE_APP:-/Users/Shared/Epic Games/UE_5.8/Engine/Binaries/Mac/Un
 PROJECT="${PROJECT:-/Users/mesmae6/Perforce/maclab_digitalhuman_main/MetaHumanTestCopy2Mac/MetaHumanTest.uproject}"
 BRIDGE="$(cd "$(dirname "$0")" && pwd)/claude_bridge.py"
 
-if pgrep -f 'UnrealEditor.app/Contents/MacOS/UnrealEditor' >/dev/null; then
+if pgrep -x UnrealEditor >/dev/null; then
   echo "Unreal Editor is already running"; exit 1
 fi
 open -a "$ENGINE_APP" --args "$PROJECT" -ModelContextProtocolStartServer "-ExecutePythonScript=$BRIDGE"

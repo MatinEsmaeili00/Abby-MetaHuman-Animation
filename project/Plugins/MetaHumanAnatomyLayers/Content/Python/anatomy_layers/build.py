@@ -196,6 +196,23 @@ def import_fbx(filename, folder, name, skeleton=None):
     return mesh
 
 
+def assign_materials(mesh, src, material_map):
+    """Give the mesh the source mesh's slot names, using the plugin's material copies."""
+    src_mats = list(src.get_editor_property("materials"))
+    mats = list(mesh.get_editor_property("materials"))
+    out = []
+    for i, m in enumerate(mats):
+        if i < len(src_mats):
+            m = unreal.SkeletalMaterial(
+                material_interface=material_map(src_mats[i].material_interface) or src_mats[i].material_interface,
+                material_slot_name=src_mats[i].material_slot_name,
+                uv_channel_data=m.uv_channel_data)
+        out.append(m)
+    mesh.set_editor_property("materials", out)
+    EAL.save_loaded_asset(mesh, only_if_is_dirty=False)
+    print(f"{mesh.get_name()} materials: {[(str(x.material_slot_name), x.material_interface.get_path_name()) for x in out]}")
+
+
 def import_meshes(material_map, bone_map, overwrite=False):
     skeleton = None
     meshes = []
@@ -209,17 +226,10 @@ def import_meshes(material_map, bone_map, overwrite=False):
             fbx = os.path.join(_temp_dir(), name + ".fbx")
             rename_bones_in_ascii_fbx(raw, fbx, bone_map)
             mesh = import_fbx(fbx, MESH_DIR, name, skeleton)
-            # restore the original material slots, pointing at the plugin copies
-            src_mats = src.get_editor_property("materials")
-            mats = mesh.get_editor_property("materials")
-            for i, m in enumerate(mats):
-                if i < len(src_mats):
-                    new = material_map(src_mats[i].material_interface)
-                    m.material_interface = new or src_mats[i].material_interface
-                    m.material_slot_name = src_mats[i].material_slot_name
-            mesh.set_editor_property("materials", mats)
+            EAL.save_loaded_asset(mesh.skeleton, only_if_is_dirty=False)
             EAL.save_loaded_asset(mesh, only_if_is_dirty=False)
             print(f"imported {name} (skeleton {mesh.skeleton.get_path_name()})")
+        assign_materials(mesh, unreal.load_asset(src_path), material_map)
         if skeleton is None:
             skeleton = mesh.skeleton
         meshes.append(mesh)

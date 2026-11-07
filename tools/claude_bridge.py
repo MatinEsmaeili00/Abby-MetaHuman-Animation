@@ -28,8 +28,17 @@ for d in (INBOX, OUTBOX, DONE):
 _STATE_KEY = "_claude_bridge_handle"
 
 
+RUNNING = os.path.join(ROOT, "running")
+os.makedirs(RUNNING, exist_ok=True)
+_busy = [False]
+
+
 def _run_file(path):
+    # claim the job first so a nested Slate tick (e.g. during a modal save dialog) can't run it twice
     name = os.path.basename(path)
+    claimed = os.path.join(RUNNING, name)
+    os.replace(path, claimed)
+    path = claimed
     buf = io.StringIO()
     ok, err = True, None
     t0 = time.time()
@@ -55,15 +64,19 @@ _last = [0.0]
 
 def _tick(delta):
     now = time.time()
-    if now - _last[0] < 0.25:
+    if _busy[0] or now - _last[0] < 0.25:
         return
     _last[0] = now
     try:
         files = sorted(f for f in os.listdir(INBOX) if f.endswith(".py"))
     except FileNotFoundError:
         return
-    for f in files:
-        _run_file(os.path.join(INBOX, f))
+    _busy[0] = True
+    try:
+        for f in files:
+            _run_file(os.path.join(INBOX, f))
+    finally:
+        _busy[0] = False
 
 
 def start():
