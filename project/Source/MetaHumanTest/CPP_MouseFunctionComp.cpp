@@ -1,66 +1,33 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
-
 #include "CPP_MouseFunctionComp.h"
 
-#include <gsl/pointers>
+#include "GameFramework/Actor.h"
+#include "GameFramework/SpringArmComponent.h"
 
-#include "SWarningOrErrorBox.h"
-
-// Sets default values for this component's properties
 UCPP_MouseFunctionComp::UCPP_MouseFunctionComp()
 {
-	// Set this component to be initialized when the game starts, and to be ticked every frame.  You can turn these features
-	// off to improve performance if you don't need them.
-	PrimaryComponentTick.bCanEverTick = true;
-
-	// ...
+	PrimaryComponentTick.bCanEverTick = false; // input-driven, nothing to do per frame
 }
 
-
-// Called when the game starts
 void UCPP_MouseFunctionComp::BeginPlay()
 {
 	Super::BeginPlay();
-	// ...
+	SyncFromCurrentSpringArm();
 
-
-	if (AActor* Owner = GetOwner())
+	if (!SpringArmComponent)
 	{
-		SpringArmComponent = Owner->FindComponentByClass<USpringArmComponent>();
-		if (SpringArmComponent)
-		{
-			CurrentArmRot = SpringArmComponent->GetRelativeRotation();
-
-			// 🔹 Initialize our zoom distance from the existing arm length
-			CurrentCameraDistance = SpringArmComponent->TargetArmLength;
-		}
-		else
-		{
-			UE_LOG(LogTemp, Warning, TEXT("I didn't find the Spring Arm Component!"));
-		}
+		UE_LOG(LogTemp, Warning, TEXT("%s: CPP_MouseFunctionComp found no Spring Arm Component"), *GetNameSafe(GetOwner()));
 	}
-	else
-	{
-		UE_LOG(LogTemp,Warning,TEXT("I coudn't get the Owner !!") );
-	}
-	
-}
-
-
-// Called every frame
-void UCPP_MouseFunctionComp::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
-{
-	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-
-	// ...
 }
 
 void UCPP_MouseFunctionComp::OrbitFromMouse(const FVector2D& MouseDelta)
 {
+	if (!SpringArmComponent)
+	{
+		return;
+	}
 
-	CurrentArmRot.Yaw += MouseDelta.X*YawSpeedDegPerPx;
-	CurrentArmRot.Pitch +=MouseDelta.Y*PitchSpeedDegPerPx;
+	CurrentArmRot.Yaw += MouseDelta.X * YawSpeedDegPerPx;
+	CurrentArmRot.Pitch = FMath::Clamp(CurrentArmRot.Pitch + MouseDelta.Y * PitchSpeedDegPerPx, MinPitch, MaxPitch);
 
 	SpringArmComponent->SetRelativeRotation(CurrentArmRot);
 }
@@ -72,18 +39,9 @@ void UCPP_MouseFunctionComp::ZoomCamera(float AxisValue)
 		return;
 	}
 
-	// Positive AxisValue → zoom in (shorter arm)
-	// Negative AxisValue → zoom out (longer arm)
-	const float NewDistance = CurrentCameraDistance - AxisValue * ZoomSpeed;
-
-	// Clamp between min/max
-	CurrentCameraDistance = FMath::Clamp(NewDistance, MinZoom, MaxZoom);
-
-	// Apply to spring arm
+	// Positive AxisValue -> zoom in (shorter arm), negative -> zoom out (longer arm)
+	CurrentCameraDistance = FMath::Clamp(CurrentCameraDistance - AxisValue * ZoomSpeed, MinZoom, MaxZoom);
 	SpringArmComponent->TargetArmLength = CurrentCameraDistance;
-
-	// Optional debug
-	// UE_LOG(LogTemp, Log, TEXT("Zoom: Axis=%f Distance=%f"), AxisValue, CurrentCameraDistance);
 }
 
 void UCPP_MouseFunctionComp::PanFromMouse(const FVector2D& MouseDelta)
@@ -93,40 +51,26 @@ void UCPP_MouseFunctionComp::PanFromMouse(const FVector2D& MouseDelta)
 		return;
 	}
 
-	// Use camera rotation so pan feels screen-space
+	// Use the camera rotation so the pan feels screen-space
 	const FRotator CamRot = SpringArmComponent->GetComponentRotation();
-	const FVector Right   = FRotationMatrix(CamRot).GetScaledAxis(EAxis::Y);
-	const FVector Up      = FRotationMatrix(CamRot).GetScaledAxis(EAxis::Z);
+	const FVector Right = FRotationMatrix(CamRot).GetScaledAxis(EAxis::Y);
+	const FVector Up = FRotationMatrix(CamRot).GetScaledAxis(EAxis::Z);
 
-	// Build a world-space delta from mouse movement
-	// const FVector WorldDelta =
-	// 	(Right * MouseDelta.X + Up * -MouseDelta.Y) * PanSpeed;
-
-	const FVector WorldDelta =
-	(Right * MouseDelta.X + Up * MouseDelta.Y) * PanSpeed;
-
-
-	// Convert current relative location to world-ish adjust, then back as just an offset
-	FVector NewRelLocation = SpringArmComponent->GetRelativeLocation();
-	NewRelLocation += WorldDelta;
-
-	SpringArmComponent->SetRelativeLocation(NewRelLocation);
+	const FVector WorldDelta = (Right * MouseDelta.X + Up * MouseDelta.Y) * PanSpeed;
+	SpringArmComponent->SetRelativeLocation(SpringArmComponent->GetRelativeLocation() + WorldDelta);
 }
 
-
-// CPP_MouseFunctionComp.cpp
 void UCPP_MouseFunctionComp::SyncFromCurrentSpringArm()
 {
-	if (!SpringArmComponent) SpringArmComponent = GetOwner()->FindComponentByClass<USpringArmComponent>();
-	if (!SpringArmComponent) return;
+	if (!SpringArmComponent && GetOwner())
+	{
+		SpringArmComponent = GetOwner()->FindComponentByClass<USpringArmComponent>();
+	}
+	if (!SpringArmComponent)
+	{
+		return;
+	}
 
-	// Example: whatever variables you use as baseline
 	CurrentCameraDistance = SpringArmComponent->TargetArmLength;
-	CurrentArmRot    = SpringArmComponent->GetRelativeRotation();
-	// CachedSocketOffset = SpringArmComponent->SocketOffset;
-	// CachedTargetOffset = SpringArmComponent->TargetOffset;
-	//
-	// // If you have drag state
-	// bIsDragging = false;
+	CurrentArmRot = SpringArmComponent->GetRelativeRotation();
 }
-

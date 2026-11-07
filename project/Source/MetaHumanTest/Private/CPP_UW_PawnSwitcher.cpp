@@ -1,9 +1,5 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
-
 #include "CPP_UW_PawnSwitcher.h"
 
-#include "WCPP_AnimationTimeline.h"
 #include "Components/Button.h"
 #include "MetaHumanTest/CPP_PlayerController.h"
 
@@ -11,30 +7,29 @@ void UCPP_UW_PawnSwitcher::NativeConstruct()
 {
 	Super::NativeConstruct();
 
-
 	if (SwitchPawnUpBtn)
 	{
-		SwitchPawnUpBtn->OnClicked.AddDynamic(this, &UCPP_UW_PawnSwitcher::OnSwitchPawnUpClicked);
+		SwitchPawnUpBtn->OnClicked.AddUniqueDynamic(this, &UCPP_UW_PawnSwitcher::OnSwitchPawnUpClicked);
 	}
-
 	if (SwitchPawnDownBtn)
 	{
-		SwitchPawnDownBtn->OnClicked.AddDynamic(this, &UCPP_UW_PawnSwitcher::OnSwitchPawnDownClicked);
+		SwitchPawnDownBtn->OnClicked.AddUniqueDynamic(this, &UCPP_UW_PawnSwitcher::OnSwitchPawnDownClicked);
 	}
-	
 }
 
 void UCPP_UW_PawnSwitcher::OnSwitchPawnUpClicked()
 {
-	ACPP_PlayerController* PC =
-	Cast<ACPP_PlayerController>(GetOwningPlayer());
-
-	//PC->PC_PlayerPlaceHolders
-	
+	// Possession is the controller's job; the other widgets follow via OnPossessedPawnChanged.
+	if (ACPP_PlayerController* PC = Cast<ACPP_PlayerController>(GetOwningPlayer()))
+	{
+		PC->SwitchPawn(+1);
+	}
 }
 
 void UCPP_UW_PawnSwitcher::OnSwitchPawnDownClicked()
 {
-	ACPP_PlayerController* PC =
-Cast<ACPP_PlayerController>(GetOwningPlayer());
+	if (ACPP_PlayerController* PC = Cast<ACPP_PlayerController>(GetOwningPlayer()))
+	{
+		PC->SwitchPawn(-1);
+	}
 }

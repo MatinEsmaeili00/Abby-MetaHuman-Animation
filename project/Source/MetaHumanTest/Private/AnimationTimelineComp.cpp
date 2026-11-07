@@ -1,109 +1,269 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
-
 #include "AnimationTimelineComp.h"
 
+#include "AnimationTimelineSource.h"
+#include "Animation/AnimInstance.h"
+#include "Animation/AnimSequenceBase.h"
+#include "Animation/AnimSingleNodeInstance.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "GameFramework/Actor.h"
 
+DEFINE_LOG_CATEGORY_STATIC(LogAnimTimeline, Log, All);
 
-// Sets default values for this component's properties
-UAnimationTimelineComp::UAnimationTimelineComp():NormalizedTime{.0f},bIsPlaying{false},bReverse{false},PlaySpeed{1.f}
+UAnimationTimelineComp::UAnimationTimelineComp()
 {
-	// Set this component to be initialized when the game starts, and to be ticked every frame.  You can turn these features
-	// off to improve performance if you don't need them.
 	PrimaryComponentTick.bCanEverTick = true;
-
-	// ...
+	PrimaryComponentTick.TickGroup = TG_PrePhysics;
 }
 
-
-// Called when the game starts
 void UAnimationTimelineComp::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// ...
-
-
-	// Auto–find mesh if you didn’t assign it in editor
-	if (!SkeletalMesh)
-	{
-		SkeletalMesh = GetOwner()->FindComponentByClass<USkeletalMeshComponent>();
-	}
-
-	if (SkeletalMesh && AnimationSequence)
-	{
-		// // Make sure we’re using the single-node mode
-		// SkeletalMesh->SetAnimationMode(EAnimationMode::AnimationSingleNode);
-		// SkeletalMesh->SetAnimation(AnimationSequence);
-		//
-		// // Stop auto playing, we’ll drive time ourselves
-		// SkeletalMesh->Stop();
-
-		AnimLength = AnimationSequence->GetPlayLength();
-
-		SingleNodeInstance = Cast<UAnimSingleNodeInstance>(SkeletalMesh->GetAnimInstance());
-	}
-
-	
-	
+	ResolveTarget();
+	SetPlayState(bAutoPlay ? ETimelinePlayState::Forward : ETimelinePlayState::Paused);
 }
 
+void UAnimationTimelineComp::ResolveTarget()
+{
+	ActiveMode = EActiveMode::None;
+	SourceInstance.Reset();
+	SingleNodeInstance.Reset();
 
-// Called every frame
+	AActor* Owner = GetOwner();
+	DrivenMesh = SkeletalMesh;
+	if (!DrivenMesh && Owner)
+	{
+		TArray<USkeletalMeshComponent*> Meshes;
+		Owner->GetComponents<USkeletalMeshComponent>(Meshes);
+		for (USkeletalMeshComponent* Mesh : Meshes)
+		{
+			if (Mesh && Mesh->GetFName() == TargetMeshName)
+			{
+				DrivenMesh = Mesh;
+				break;
+			}
+		}
+		if (!DrivenMesh)
+		{
+			// First mesh that animates by itself (not a Leader Pose follower).
+			for (USkeletalMeshComponent* Mesh : Meshes)
+			{
+				if (Mesh && Mesh->GetAnimInstance() && !Mesh->LeaderPoseComponent.IsValid())
+				{
+					DrivenMesh = Mesh;
+					break;
+				}
+			}
+		}
+	}
+
+	if (!DrivenMesh)
+	{
+		UE_LOG(LogAnimTimeline, Warning, TEXT("%s: no skeletal mesh to drive"), *GetNameSafe(Owner));
+		return;
+	}
+
+	// Set the time before the mesh evaluates its pose this frame.
+	DrivenMesh->AddTickPrerequisiteComponent(this);
+
+	UAnimInstance* AnimInstance = DrivenMesh->GetAnimInstance();
+	const bool bCanDriveAnimBP = AnimInstance && AnimInstance->Implements<UAnimationTimelineSource>();
+
+	switch (DriveMode)
+	{
+	case ETimelineDriveMode::Auto:
+		ActiveMode = bCanDriveAnimBP ? EActiveMode::AnimBlueprint : (AnimationSequence ? EActiveMode::SingleClip : EActiveMode::RateOnly);
+		break;
+	case ETimelineDriveMode::AnimBlueprint:
+		ActiveMode = bCanDriveAnimBP ? EActiveMode::AnimBlueprint : EActiveMode::RateOnly;
+		break;
+	case ETimelineDriveMode::SingleClip:
+		ActiveMode = AnimationSequence ? EActiveMode::SingleClip : (bCanDriveAnimBP ? EActiveMode::AnimBlueprint : EActiveMode::RateOnly);
+		break;
+	}
+
+	if (ActiveMode == EActiveMode::AnimBlueprint)
+	{
+		SourceInstance = AnimInstance;
+		NormalizedTime = Cast<IAnimationTimelineSource>(AnimInstance)->GetTimelinePosition();
+	}
+	else if (ActiveMode == EActiveMode::SingleClip)
+	{
+		DrivenMesh->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+		DrivenMesh->SetAnimation(AnimationSequence);
+		SingleNodeInstance = DrivenMesh->GetSingleNodeInstance();
+		if (SingleNodeInstance.IsValid())
+		{
+			SingleNodeInstance->SetPlaying(false); // the timeline owns the clock
+		}
+		ClipLength = AnimationSequence->GetPlayLength();
+	}
+
+	static const TCHAR* ModeNames[] = { TEXT("None"), TEXT("AnimBlueprint"), TEXT("SingleClip"), TEXT("RateOnly (pause/play only)") };
+	UE_LOG(LogAnimTimeline, Log, TEXT("%s: timeline drives %s in %s mode"), *GetNameSafe(Owner), *DrivenMesh->GetName(), ModeNames[static_cast<int32>(ActiveMode)]);
+}
+
+float UAnimationTimelineComp::GetCycleLength() const
+{
+	switch (ActiveMode)
+	{
+	case EActiveMode::AnimBlueprint:
+		if (const IAnimationTimelineSource* Source = Cast<IAnimationTimelineSource>(SourceInstance.Get()))
+		{
+			return Source->GetTimelineCycleLength();
+		}
+		return 0.f;
+	case EActiveMode::SingleClip:
+		return ClipLength;
+	default:
+		return 0.f;
+	}
+}
+
+bool UAnimationTimelineComp::CanScrub() const
+{
+	return ActiveMode == EActiveMode::AnimBlueprint || ActiveMode == EActiveMode::SingleClip;
+}
+
+float UAnimationTimelineComp::WrapOrClamp(float Time) const
+{
+	return bLoop ? FMath::Frac(Time) : FMath::Clamp(Time, 0.f, 1.f);
+}
+
 void UAnimationTimelineComp::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	// ...
+	// The anim instance is re-created if the mesh's anim class changes.
+	if ((ActiveMode == EActiveMode::AnimBlueprint && !SourceInstance.IsValid()) ||
+		(ActiveMode == EActiveMode::SingleClip && !SingleNodeInstance.IsValid()))
+	{
+		ResolveTarget();
+	}
 
+	const float Cycle = GetCycleLength();
+	if (PlayState != ETimelinePlayState::Paused && !bScrubbing && Cycle > KINDA_SMALL_NUMBER)
+	{
+		const float Direction = PlayState == ETimelinePlayState::Reverse ? -1.f : 1.f;
+		const float Next = NormalizedTime + Direction * PlaySpeed * DeltaTime / Cycle;
 
-	if (!bIsPlaying || !SingleNodeInstance || AnimLength <= 0.f)
-		return;
+		if (!bLoop && (Next >= 1.f || Next <= 0.f))
+		{
+			NormalizedTime = FMath::Clamp(Next, 0.f, 1.f);
+			SetPlayState(ETimelinePlayState::Paused);
+		}
+		else
+		{
+			NormalizedTime = WrapOrClamp(Next);
+		}
+	}
 
-	const float Direction = bReverse ? -1.f : 1.f;
-
-	// convert seconds to normalized units  (1 real sec → 1/AnimLength of the clip)
-	const float DeltaNormalized = Direction * PlaySpeed * DeltaTime / AnimLength;
-
-	NormalizedTime = FMath::Clamp(NormalizedTime + DeltaNormalized, 0.f, 1.f);
-
-	UpdateAnimPosition( NormalizedTime,SingleNodeInstance, AnimLength);
-
-	
+	PushTime();
 }
 
-void UAnimationTimelineComp::UpdateAnimPosition(float InNormalizedTime,UAnimSingleNodeInstance* InSingleNodeInstance,float InAnimLength)
+void UAnimationTimelineComp::PushTime()
 {
-	if (!InSingleNodeInstance || InAnimLength <= 0.f) return;
+	switch (ActiveMode)
+	{
+	case EActiveMode::AnimBlueprint:
+		if (IAnimationTimelineSource* Source = Cast<IAnimationTimelineSource>(SourceInstance.Get()))
+		{
+			Source->SetTimelinePosition(NormalizedTime);
+		}
+		break;
+	case EActiveMode::SingleClip:
+		if (UAnimSingleNodeInstance* SingleNode = SingleNodeInstance.Get())
+		{
+			SingleNode->SetPosition(NormalizedTime * ClipLength, /*bFireNotifies*/ false);
+		}
+		break;
+	default:
+		break;
+	}
+}
 
-	const float PositionSeconds = InNormalizedTime * InAnimLength;
+void UAnimationTimelineComp::SetPlayState(ETimelinePlayState NewState)
+{
+	if (NewState != ETimelinePlayState::Paused)
+	{
+		LastPlayDirection = NewState;
+	}
 
-	// false = don’t fire notifies, you can change if you want them
-	InSingleNodeInstance->SetPosition(PositionSeconds, false);
-	InSingleNodeInstance->SetPlaying(false); // we’re manually driving position
+	if (ActiveMode == EActiveMode::RateOnly && DrivenMesh)
+	{
+		// Anim BP we can't drive: all we can do is freeze or run its clock (no reverse / scrub).
+		DrivenMesh->GlobalAnimRateScale = NewState == ETimelinePlayState::Forward ? PlaySpeed : 0.f;
+	}
+
+	if (PlayState != NewState)
+	{
+		PlayState = NewState;
+		OnPlayStateChanged.Broadcast(PlayState);
+	}
 }
 
 void UAnimationTimelineComp::PlayForward()
 {
-	bReverse = false;
-	bIsPlaying = true;
+	if (!bLoop && NormalizedTime >= 1.f)
+	{
+		NormalizedTime = 0.f;
+	}
+	SetPlayState(ETimelinePlayState::Forward);
 }
 
 void UAnimationTimelineComp::PlayReverse()
 {
-	bReverse = true;
-	bIsPlaying = true;
+	if (!bLoop && NormalizedTime <= 0.f)
+	{
+		NormalizedTime = 1.f;
+	}
+	SetPlayState(ActiveMode == EActiveMode::RateOnly ? ETimelinePlayState::Paused : ETimelinePlayState::Reverse);
 }
 
 void UAnimationTimelineComp::Pause()
 {
-	bIsPlaying = false;
+	SetPlayState(ETimelinePlayState::Paused);
+}
+
+void UAnimationTimelineComp::TogglePlayPause()
+{
+	if (IsPlaying())
+	{
+		Pause();
+	}
+	else if (LastPlayDirection == ETimelinePlayState::Reverse)
+	{
+		PlayReverse();
+	}
+	else
+	{
+		PlayForward();
+	}
 }
 
 void UAnimationTimelineComp::SetNormalizedTime(float InAlpha)
 {
 	NormalizedTime = FMath::Clamp(InAlpha, 0.f, 1.f);
-	UpdateAnimPosition(NormalizedTime,SingleNodeInstance, AnimLength); // jump immediately
+	PushTime(); // show it right away, even while paused
 }
 
+void UAnimationTimelineComp::BeginScrub()
+{
+	bScrubbing = true;
+}
 
+void UAnimationTimelineComp::EndScrub()
+{
+	bScrubbing = false;
+}
+
+void UAnimationTimelineComp::StepSeconds(float Seconds)
+{
+	const float Cycle = GetCycleLength();
+	if (Cycle > KINDA_SMALL_NUMBER)
+	{
+		Pause();
+		NormalizedTime = WrapOrClamp(NormalizedTime + Seconds / Cycle);
+		PushTime();
+	}
+}

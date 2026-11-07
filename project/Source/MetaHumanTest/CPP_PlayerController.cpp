@@ -1,27 +1,26 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
-
 #include "CPP_PlayerController.h"
 
-#include "AnimationTimelineComp.h"
+#include "CPP_MouseFunctionComp.h"
 #include "CPP_PlayerPlaceHolderManagerA.h"
+#include "CPP_UW_AnatomyViewSwitcher.h"
+#include "CPP_UW_PawnSwitcher.h"
+#include "CPP_UW_SpeedSlider.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "InputActionValue.h"
+#include "InputMappingContext.h"
 #include "WCPP_AnimationTimeline.h"
+#include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
 
 void ACPP_PlayerController::BeginPlay()
 {
-	
-
-	//bShowMouseCursor = true;
+	Super::BeginPlay(); // was missing: BP_PlayerController's own BeginPlay never ran
 
 	bShowMouseCursor = true;
-
 	FInputModeGameAndUI InputMode;
 	InputMode.SetHideCursorDuringCapture(false);
 	SetInputMode(InputMode);
-
 
 	if (ULocalPlayer* LP = GetLocalPlayer())
 	{
@@ -29,75 +28,59 @@ void ACPP_PlayerController::BeginPlay()
 		{
 			if (MouseManager)
 			{
-				Subsys->AddMappingContext(MouseManager, /*Priority*/1);
+				Subsys->AddMappingContext(MouseManager, /*Priority*/ 1);
 			}
 		}
 	}
 
-	// if (SpeedSliderWidget)
-	// {
-	// 	SpeedSliderWidgetInstance = CreateWidget<UCPP_UW_SpeedSlider>(this,SpeedSliderWidget);
-	// 	if (SpeedSliderWidgetInstance)
-	// 	{
-	// 		SpeedSliderWidgetInstance->AddToViewport(10);
-	// 	}
-	// }
+	// UI: the controller only creates the widgets; each widget finds its component on the possessed pawn
+	// and re-binds by itself when the possessed pawn changes.
+	SpeedSliderWidgetInstance = AddWidget(SpeedSliderWidget);
+	TimelineWidget = AddWidget(TimelineWidgetClass);
+	AnatomyViewSwitcherWidget = AddWidget(AnatomyViewSwitcherWidgetClass);
+	PawnSwitcherWidget = AddWidget(PawnSwitcherWidgetClass);
 
-
-	// UAnimationTimelineComp* TimelineComp = nullptr;
-	//
-	// //if (TargetMetaHuman)
-	//
-	// if (APawn* MyPawn = GetPawn())
-	// {
-	// 	TimelineComp = MyPawn->FindComponentByClass<UAnimationTimelineComp>();
-	// }
-
-	if (TimelineWidgetClass)
+	// Placeholders (was looking for APlayerCameraManager, so the manager was never found).
+	if (ACPP_PlayerPlaceHolderManagerA* PlaceHolderManager = Cast<ACPP_PlayerPlaceHolderManagerA>(
+		UGameplayStatics::GetActorOfClass(GetWorld(), ACPP_PlayerPlaceHolderManagerA::StaticClass())))
 	{
-		TimelineWidget = CreateWidget<UWCPP_AnimationTimeline>(this, TimelineWidgetClass);
-		if (TimelineWidget)
+		PC_PlayerPlaceHolders.Reset();
+		for (AActor* PlaceHolder : PlaceHolderManager->PlayerPlaceHolders)
 		{
-			// we don't need it anymore bc in the widget class I'm getting the current pawn and get access to the timeline component on it
-			//TimelineWidget->TimelineComp = TimelineComp;  // 🔗 Pass the component reference 
-			TimelineWidget->AddToViewport();
+			PC_PlayerPlaceHolders.Add(PlaceHolder);
 		}
-	}
-	
-	if (AnatomyViewSwitcherWidgetClass)
-	{
-		AnatomyViewSwitcherWidget = CreateWidget<UCPP_UW_AnatomyViewSwitcher>(this, AnatomyViewSwitcherWidgetClass);
-		if (AnatomyViewSwitcherWidget)
-		{
-			AnatomyViewSwitcherWidget->AddToViewport();
-		}
-	}
-
-	if (PawnSwitcherWidgetClass)
-	{
-		PawnSwitcherWidget = CreateWidget<UCPP_UW_PawnSwitcher>(this, PawnSwitcherWidgetClass);
-	if (PawnSwitcherWidget)
-	{
-		PawnSwitcherWidget->AddToViewport();
-	}
-	}
-
-
-	ACPP_PlayerPlaceHolderManagerA* PlayerPlaceHolderManager =
-		Cast<ACPP_PlayerPlaceHolderManagerA>
-	(UGameplayStatics::GetActorOfClass(GetWorld(),
-		APlayerCameraManager::StaticClass()));
-
-	if (!PlayerPlaceHolderManager)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("No PlayerPlaceholderManager found in level!"));
-		
 	}
 	else
 	{
-		PC_PlayerPlaceHolders = PlayerPlaceHolderManager->PlayerPlaceHolders;
+		UE_LOG(LogTemp, Warning, TEXT("No PlayerPlaceholderManager found in level!"));
 	}
-	
+
+	// The pawn the game mode gave us is the first switchable pawn of its class.
+	SwitchablePawns.SetNum(SwitchablePawnClasses.Num());
+	if (APawn* Current = GetPawn())
+	{
+		const int32 Index = SwitchablePawnClasses.IndexOfByPredicate([Current](const TSubclassOf<APawn>& Class) { return Class && Current->IsA(Class); });
+		if (Index != INDEX_NONE)
+		{
+			SwitchablePawns[Index] = Current;
+			CurrentPawnIndex = Index;
+		}
+	}
+}
+
+template <typename WidgetT>
+WidgetT* ACPP_PlayerController::AddWidget(TSubclassOf<WidgetT> WidgetClass, int32 ZOrder)
+{
+	if (!WidgetClass)
+	{
+		return nullptr;
+	}
+	WidgetT* Widget = CreateWidget<WidgetT>(this, WidgetClass);
+	if (Widget)
+	{
+		Widget->AddToViewport(ZOrder);
+	}
+	return Widget;
 }
 
 void ACPP_PlayerController::SetupInputComponent()
@@ -108,64 +91,86 @@ void ACPP_PlayerController::SetupInputComponent()
 	{
 		if (MouseMove)
 		{
-			EIC->BindAction(MouseMove,ETriggerEvent::Triggered,this,&ACPP_PlayerController::HandleMouseMove);
+			EIC->BindAction(MouseMove, ETriggerEvent::Triggered, this, &ACPP_PlayerController::HandleMouseMove);
 		}
 		if (MouseZoom)
 		{
-			EIC->BindAction(MouseZoom, ETriggerEvent::Triggered,
-							this, &ACPP_PlayerController::HandleMouseZoom);
+			EIC->BindAction(MouseZoom, ETriggerEvent::Triggered, this, &ACPP_PlayerController::HandleMouseZoom);
 		}
-
 	}
-	
 }
 
 void ACPP_PlayerController::HandleMouseMove(const FInputActionValue& Value)
 {
-	// if (IsInputKeyDown(EKeys::LeftMouseButton))
-	// {
-	// 	UE_LOG(LogTemp,Warning,TEXT("I'm getting the mouse input and left click!"));
-	// 	GetMouseFunctionComp()->OrbitFromMouse(Value.Get<FVector2D>());
-	// }
-
-
 	const FVector2D MouseDelta = Value.Get<FVector2D>();
 
 	if (UCPP_MouseFunctionComp* MouseComp = GetMouseFunctionComp())
 	{
 		if (IsInputKeyDown(EKeys::RightMouseButton))
 		{
-			// Rotate / orbit
-			MouseComp->OrbitFromMouse(MouseDelta);
+			MouseComp->OrbitFromMouse(MouseDelta); // rotate / orbit
 		}
 		else if (IsInputKeyDown(EKeys::LeftMouseButton))
 		{
-			// Pan / relocate camera
-			MouseComp->PanFromMouse(MouseDelta);
+			MouseComp->PanFromMouse(MouseDelta); // pan / relocate camera
 		}
 	}
-
 }
-
 
 void ACPP_PlayerController::HandleMouseZoom(const FInputActionValue& Value)
 {
-	const float ZoomInput = Value.Get<float>();
-
 	if (UCPP_MouseFunctionComp* MouseComp = GetMouseFunctionComp())
 	{
-		MouseComp->ZoomCamera(ZoomInput);
+		MouseComp->ZoomCamera(Value.Get<float>());
 	}
 }
 
-
-UCPP_MouseFunctionComp* ACPP_PlayerController::GetMouseFunctionComp()
+UCPP_MouseFunctionComp* ACPP_PlayerController::GetMouseFunctionComp() const
 {
-	APawn* CurrentPawn = GetPawn();
-	if (!CurrentPawn)
+	const APawn* CurrentPawn = GetPawn();
+	return CurrentPawn ? CurrentPawn->FindComponentByClass<UCPP_MouseFunctionComp>() : nullptr;
+}
+
+void ACPP_PlayerController::SwitchPawn(int32 Direction)
+{
+	const int32 Num = SwitchablePawnClasses.Num();
+	if (Num > 0)
 	{
-		return nullptr;
+		SwitchToPawnIndex(((CurrentPawnIndex + Direction) % Num + Num) % Num);
+	}
+}
+
+void ACPP_PlayerController::SwitchToPawnIndex(int32 Index)
+{
+	if (!SwitchablePawnClasses.IsValidIndex(Index) || !SwitchablePawnClasses[Index])
+	{
+		return;
+	}
+	SwitchablePawns.SetNum(SwitchablePawnClasses.Num());
+
+	APawn* Target = SwitchablePawns[Index];
+	if (!IsValid(Target))
+	{
+		// Spawn at the matching placeholder, or next to the current pawn if there are none.
+		FTransform SpawnTransform = GetPawn() ? GetPawn()->GetActorTransform() : FTransform::Identity;
+		if (PC_PlayerPlaceHolders.Num() > 0)
+		{
+			if (const AActor* PlaceHolder = PC_PlayerPlaceHolders[Index % PC_PlayerPlaceHolders.Num()])
+			{
+				SpawnTransform = PlaceHolder->GetActorTransform();
+			}
+		}
+
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		Target = GetWorld()->SpawnActor<APawn>(SwitchablePawnClasses[Index], SpawnTransform, Params);
+		SwitchablePawns[Index] = Target;
 	}
 
-	return CurrentPawn->FindComponentByClass<UCPP_MouseFunctionComp>();
+	if (Target && Target != GetPawn())
+	{
+		// Possess fires OnPossessedPawnChanged -> every widget re-binds to the new pawn's components.
+		Possess(Target);
+		CurrentPawnIndex = Index;
+	}
 }

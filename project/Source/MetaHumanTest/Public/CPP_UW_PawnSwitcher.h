@@ -1,42 +1,30 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Pawn switcher widget (WB_PawnSwitcher): Up / Down ask the player controller to possess the next / previous pawn.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
-#include "Components/Button.h"
 #include "CPP_UW_PawnSwitcher.generated.h"
 
-/**
- * 
- */
+class UButton;
 
 UCLASS()
 class METAHUMANTEST_API UCPP_UW_PawnSwitcher : public UUserWidget
 {
 	GENERATED_BODY()
 
+protected:
 	virtual void NativeConstruct() override;
 
-public:
-	
+	UPROPERTY(meta=(BindWidget))
+	TObjectPtr<UButton> SwitchPawnUpBtn;
 
-
-	
-protected:
-
-	UPROPERTY(meta = (BindWidget))
-	UButton* SwitchPawnUpBtn;
-
-	UPROPERTY(meta = (BindWidget))
-	UButton* SwitchPawnDownBtn;
+	UPROPERTY(meta=(BindWidget))
+	TObjectPtr<UButton> SwitchPawnDownBtn;
 
 	UFUNCTION()
 	void OnSwitchPawnUpClicked();
 
 	UFUNCTION()
 	void OnSwitchPawnDownClicked();
-
-	
-	
 };

@@ -1,41 +1,32 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Mouse camera control on the pawn: orbit (RMB), pan (LMB) and zoom (wheel) the pawn's spring arm.
+// The player controller only routes the input here.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
-#include "GameFramework/SpringArmComponent.h"
 #include "CPP_MouseFunctionComp.generated.h"
 
+class USpringArmComponent;
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class METAHUMANTEST_API UCPP_MouseFunctionComp : public UActorComponent
 {
 	GENERATED_BODY()
 
-public:	
-	// Sets default values for this component's properties
+public:
 	UCPP_MouseFunctionComp();
-
-protected:
-	// Called when the game starts
-	virtual void BeginPlay() override;
-
-public:	
-	// Called every frame
-	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
-
-
-	USpringArmComponent* SpringArmComponent;
 
 	void OrbitFromMouse(const FVector2D& MouseDelta);
 	void ZoomCamera(float AxisValue);
-
-
-
-	// 🔹 NEW: pan from mouse (RMB)
 	void PanFromMouse(const FVector2D& MouseDelta);
-	
+
+	/** Re-read the spring arm's current rotation / length (call after moving it from somewhere else). */
+	UFUNCTION(BlueprintCallable)
+	void SyncFromCurrentSpringArm();
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Mouse")
+	TObjectPtr<USpringArmComponent> SpringArmComponent = nullptr;
 
 	UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="Mouse Speed")
 	float YawSpeedDegPerPx = 1.f;
@@ -43,18 +34,19 @@ public:
 	UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="Mouse Speed")
 	float PitchSpeedDegPerPx = 1.f;
 
+	/** Orbit pitch limits, so the camera can't flip over the top or under the floor. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Mouse Speed")
+	float MinPitch = -80.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Mouse Speed")
+	float MaxPitch = 80.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="MetaHuman")
-	TArray<AActor*> PlayerPlaceHolders;
-	
+	TArray<TObjectPtr<AActor>> PlayerPlaceHolders;
 
-	// 🔹 NEW: how fast we pan
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Pan")
 	float PanSpeed = 1.0f;
 
-	FRotator CurrentArmRot;
-	
-	// --- Zoom settings ---
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Zoom")
 	float ZoomSpeed = 50.f;  // how fast we zoom per scroll step
 
@@ -64,16 +56,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Zoom")
 	float MaxZoom = 1200.f;  // farthest
 
-	// Current spring arm length we’re using
+	/** Current spring arm length we're using */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Zoom")
 	float CurrentCameraDistance = 0.f;
 
+	FRotator CurrentArmRot;
 
-
-	// CPP_MouseFunctionComp.h
-	UFUNCTION(BlueprintCallable)
-	void SyncFromCurrentSpringArm();
-
-
-	
+protected:
+	virtual void BeginPlay() override;
 };

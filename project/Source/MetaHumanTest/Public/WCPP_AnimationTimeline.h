@@ -1,65 +1,68 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Timeline widget (WB_AmationTimeline): forwards Play / Pause / Reverse and the time slider to the
+// UAnimationTimelineComp on whatever pawn the owning controller possesses.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "AnimationTimelineComp.h"
 #include "WCPP_AnimationTimeline.generated.h"
-
-/**
- * 
- */
-
 
 class UButton;
 class USlider;
-class UAnimationTimelineComp;
-
+class UTextBlock;
 
 UCLASS()
 class METAHUMANTEST_API UWCPP_AnimationTimeline : public UUserWidget
 {
 	GENERATED_BODY()
 
-	
-	virtual void NativeConstruct() override;
-	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
-
-
 public:
-	// I have got the TimelineComp passed by Player Controller
-	UPROPERTY(BlueprintReadWrite, meta=(ExposeOnSpawn = "true"), Category="Timeline")
-	UAnimationTimelineComp* TimelineComp = nullptr;
+	/** Timeline on the possessed pawn (re-found automatically when the controller possesses another pawn). */
+	UPROPERTY(BlueprintReadWrite, Category="Timeline")
+	TObjectPtr<UAnimationTimelineComp> TimelineComp = nullptr;
 
+	/** Tint for the button of the current play state. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Timeline")
+	FLinearColor ActiveButtonColor = FLinearColor(0.25f, 0.65f, 1.f, 1.f);
 
-
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Timeline")
+	FLinearColor IdleButtonColor = FLinearColor::White;
 
 protected:
-	
-	// BindWidget = will auto-bind to Designer widgets with the same name
-	UPROPERTY(meta = (BindWidget))
-	UButton* PlayBtn;
+	virtual void NativeConstruct() override;
+	virtual void NativeDestruct() override;
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
-	UPROPERTY(meta = (BindWidget))
-	UButton* PauseBtn;
+	// BindWidget = auto-binds to the Designer widgets with the same name
+	UPROPERTY(meta=(BindWidget))
+	TObjectPtr<UButton> PlayBtn;
 
-	UPROPERTY(meta = (BindWidget))
-	UButton* ReverseBtn;
+	UPROPERTY(meta=(BindWidget))
+	TObjectPtr<UButton> PauseBtn;
 
-	UPROPERTY(meta = (BindWidget))
-	USlider* Slider_Time;
+	UPROPERTY(meta=(BindWidget))
+	TObjectPtr<UButton> ReverseBtn;
 
+	UPROPERTY(meta=(BindWidget))
+	TObjectPtr<USlider> Slider_Time;
 
-	UFUNCTION()
-	void OnPlayClicked();
+	/** Optional label, e.g. "Gait cycle 42%  (0.41 s)". */
+	UPROPERTY(meta=(BindWidgetOptional))
+	TObjectPtr<UTextBlock> TimeText;
 
-	UFUNCTION()
-	void OnPauseClicked();
+	UFUNCTION() void OnPlayClicked();
+	UFUNCTION() void OnPauseClicked();
+	UFUNCTION() void OnReverseClicked();
+	UFUNCTION() void OnSliderValueChanged(float Value);
+	UFUNCTION() void OnSliderCaptureBegin();
+	UFUNCTION() void OnSliderCaptureEnd();
+	UFUNCTION() void HandlePossessedPawnChanged(APawn* OldPawn, APawn* NewPawn);
+	UFUNCTION() void HandlePlayStateChanged(ETimelinePlayState NewState);
 
-	UFUNCTION()
-	void OnReverseClicked();
+	void BindToPawn(APawn* Pawn);
+	void RefreshButtons();
 
-	UFUNCTION()
-	void OnSliderValueChanged(float Value);
-	UAnimationTimelineComp* GetAnimationTimelineComp();
+private:
+	bool bDragging = false;
 };

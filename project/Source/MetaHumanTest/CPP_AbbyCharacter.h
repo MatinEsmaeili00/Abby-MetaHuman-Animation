@@ -4,12 +4,6 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Pawn.h"
-#include "GameFramework/SpringArmComponent.h"
-#include "EnhancedInputComponent.h"
-#include "EnhancedInputSubsystems.h"
-#include "InputMappingContext.h"
-#include "InputAction.h"
-#include "TaskSyncManager.h"
 #include "CPP_AbbyCharacter.generated.h"
 
 UCLASS()
@@ -26,12 +20,8 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
 
-
-
-
 public:
-	UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="Properties")
+	/** Locomotion speed 0..1 (walk -> jog -> run), set by the speed slider and read by the Anim BP. */
+	UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="Properties", meta=(ClampMin="0", ClampMax="1"))
 	float Speed{};
-
-
 };

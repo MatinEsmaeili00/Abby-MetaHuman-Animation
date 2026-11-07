@@ -1,23 +1,20 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Player controller: owns input (Enhanced Input -> components on the possessed pawn), puts the UI on the
+// viewport, and switches which pawn is possessed. It does not do the pawn's work itself: the widgets and
+// input talk to components on whatever pawn is possessed, so a different pawn = different behaviour.
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "CPP_AbbyCharacter.h"
-#include "CPP_MouseFunctionComp.h"
-#include "CPP_UW_AnatomyViewSwitcher.h"
-#include "CPP_UW_PawnSwitcher.h"
-#include "CPP_UW_SpeedSlider.h"
-#include "InputMappingContext.h"
-#include "InputActionValue.h"   // add this
 #include "GameFramework/PlayerController.h"
 #include "CPP_PlayerController.generated.h"
 
-/**
- * 
- */
-
-
+class UInputMappingContext;
+class UInputAction;
+struct FInputActionValue;
+class UCPP_MouseFunctionComp;
+class UCPP_UW_AnatomyViewSwitcher;
+class UCPP_UW_PawnSwitcher;
+class UCPP_UW_SpeedSlider;
 class UWCPP_AnimationTimeline;
 
 UCLASS()
@@ -25,82 +22,84 @@ class METAHUMANTEST_API ACPP_PlayerController : public APlayerController
 {
 	GENERATED_BODY()
 
-
-
-	virtual void BeginPlay() override;
-
-	virtual void SetupInputComponent() override;
-
-	UPROPERTY(EditAnywhere,Category="Input")
-	UInputMappingContext* MouseManager;
-
-
-	UPROPERTY(EditAnywhere,Category="Input")
-	UInputAction* MouseMove;
-
+public:
+	// ---------------- Input ----------------
 
 	UPROPERTY(EditAnywhere, Category="Input")
-	UInputAction* MouseZoom;
+	TObjectPtr<UInputMappingContext> MouseManager;
 
-	void HandleMouseMove(const FInputActionValue& Value);
+	UPROPERTY(EditAnywhere, Category="Input")
+	TObjectPtr<UInputAction> MouseMove;
 
-	void HandleMouseZoom(const FInputActionValue& Value);
+	UPROPERTY(EditAnywhere, Category="Input")
+	TObjectPtr<UInputAction> MouseZoom;
 
-
-
-	ACPP_AbbyCharacter* AbbyCharacterPawn;
-	UCPP_MouseFunctionComp* GetMouseFunctionComp();
-
-public:
+	// ---------------- MetaHuman / placeholders ----------------
 
 	// access the meta human // need to be attached on bp
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="MetaHuman")
-	AActor* TargetMetaHuman = nullptr;
+	TObjectPtr<AActor> TargetMetaHuman = nullptr;
 
-	// This is ganna get the data of the Player Placeholder manager from the map, in the begin play
+	/** Filled in BeginPlay from the BP_PlayerPlaceHolderManagerA in the level: where switched-to pawns are spawned. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="MetaHuman")
-	TArray<AActor*> PC_PlayerPlaceHolders;
+	TArray<TObjectPtr<AActor>> PC_PlayerPlaceHolders;
 
-	
-	UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="UI")
+	// ---------------- UI (set to the widget Blueprints in BP_PlayerController) ----------------
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="UI")
 	TSubclassOf<UCPP_UW_SpeedSlider> SpeedSliderWidget;
 
-	// Set this to the BP widget in the editor, this ui is for the new slider
-	UPROPERTY(EditAnywhere,BlueprintReadWrite, Category="UI")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="UI")
 	TSubclassOf<UWCPP_AnimationTimeline> TimelineWidgetClass;
 
-	
-		
-	UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="UI")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="UI")
 	TSubclassOf<UCPP_UW_AnatomyViewSwitcher> AnatomyViewSwitcherWidgetClass;
 
-		
-	UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="UI")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="UI")
 	TSubclassOf<UCPP_UW_PawnSwitcher> PawnSwitcherWidgetClass;
 
-	
+	// ---------------- Pawn switching (WB_PawnSwitcher) ----------------
+
+	/** Pawns the Up / Down buttons cycle through. A class that isn't in the level yet is spawned at the matching placeholder. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Pawn Switching")
+	TArray<TSubclassOf<APawn>> SwitchablePawnClasses;
+
+	/** Possess the next (+1) or previous (-1) pawn in SwitchablePawnClasses. */
+	UFUNCTION(BlueprintCallable, Category="Pawn Switching")
+	void SwitchPawn(int32 Direction);
+
+	UFUNCTION(BlueprintCallable, Category="Pawn Switching")
+	void SwitchToPawnIndex(int32 Index);
+
+protected:
+	virtual void BeginPlay() override;
+	virtual void SetupInputComponent() override;
+
+	void HandleMouseMove(const FInputActionValue& Value);
+	void HandleMouseZoom(const FInputActionValue& Value);
+
+	/** Mouse orbit / pan / zoom is done by the possessed pawn's component (found fresh, so pawn switches just work). */
+	UCPP_MouseFunctionComp* GetMouseFunctionComp() const;
+
 private:
-	UPROPERTY()
-	UCPP_UW_SpeedSlider* SpeedSliderWidgetInstance{};
-
-
-
-	// this ui is for the new slider
-	UPROPERTY()
-	UWCPP_AnimationTimeline* TimelineWidget = nullptr;
-
-	// this ui is for the new slider
-	UPROPERTY()
-	UCPP_UW_AnatomyViewSwitcher* AnatomyViewSwitcherWidget = nullptr;
-
+	template <typename WidgetT>
+	WidgetT* AddWidget(TSubclassOf<WidgetT> WidgetClass, int32 ZOrder = 0);
 
 	UPROPERTY()
-	UCPP_UW_PawnSwitcher* PawnSwitcherWidget = nullptr;
+	TObjectPtr<UCPP_UW_SpeedSlider> SpeedSliderWidgetInstance = nullptr;
 
+	UPROPERTY()
+	TObjectPtr<UWCPP_AnimationTimeline> TimelineWidget = nullptr;
 
-	
-	
+	UPROPERTY()
+	TObjectPtr<UCPP_UW_AnatomyViewSwitcher> AnatomyViewSwitcherWidget = nullptr;
 
-	
-	
+	UPROPERTY()
+	TObjectPtr<UCPP_UW_PawnSwitcher> PawnSwitcherWidget = nullptr;
+
+	/** One instance per SwitchablePawnClasses entry, created on first use (kept alive so switching back is instant). */
+	UPROPERTY()
+	TArray<TObjectPtr<APawn>> SwitchablePawns;
+
+	int32 CurrentPawnIndex = 0;
 };
