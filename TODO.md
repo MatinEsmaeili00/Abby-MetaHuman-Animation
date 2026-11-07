@@ -6,13 +6,13 @@ Status key: `[x]` done · `[~]` in progress · `[ ]` not started · `[!]` blocke
 - [x] Connect to the Unreal Editor (MCP) and GitHub
 - [x] Investigate `BP_MH_CH_Abby8`, `ABP_Abby`, the retarget assets and the anatomy meshes ([findings](docs/01-investigation.md))
 - [x] Create this repo, TODO and "before" screenshots
-- [~] Python remote execution: enabled by Matin; verifying from `tools/ue_py.py`
+- [x] Editor Python access: UE remote execution can't work on macOS (a socket bound to 127.0.0.1 never gets multicast), so a file-based bridge is used instead: `tools/claude_bridge.py` + `tools/ue_bridge.py`
 
 ## 1. Make every layer follow the run: portable plugin `MetaHumanAnatomyLayers`
 Approach: give the anatomy meshes **MetaHuman bone names** so they can use plain **Leader Pose** on Abby's `Body`, like the face does. That means no extra Anim BP, no runtime cost, the bones take Abby's proportions, and the meshes follow any animation (Anim BP, Sequencer, LiveLink).
-- [ ] Create the plugin `Plugins/MetaHumanAnatomyLayers` (content + Python tools)
-- [ ] Copy the Emil muscle and skeleton meshes (with skeleton, materials and textures) into the plugin, with no `/Game` references
-- [ ] Rename limb bones: humerus→upperarm, ulna→lowerarm, femur→thigh, tibia→calf, ankle→foot; match twist bones by position along each limb
+- [x] Create the plugin `Plugins/MetaHumanAnatomyLayers` (content + Python tools)
+- [~] Copy the Emil muscle and skeleton meshes into the plugin with their own skeleton (FBX round trip), plus materials and textures, so there are no `/Game` references
+- [~] Rename limb bones: humerus→upperarm, ulna→lowerarm, femur→thigh, tibia→calf, ankle→foot; match twist bones by position along each limb (dry run done: Emil `ulna_twist_01` ↔ MH `lowerarm_twist_02`, so name-guessing would have been wrong)
 - [ ] `BP_MH_CH_Abby8`: attach `MuscleMesh` and `SkeletonMesh` to `Body`, switch them to the plugin meshes, and let `EnableMasterPose` set leader pose
 - [ ] Verify in the viewport and in Play-In-Editor at walk, jog and run speeds; check that the anatomy view switcher (C++) still lines up
 - [ ] Plugin README: how to drop it into another project

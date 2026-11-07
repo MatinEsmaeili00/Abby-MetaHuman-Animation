@@ -1,7 +1,7 @@
 #!/bin/zsh
 # Copies the tracked parts of the Unreal project (Perforce workspace) into this repo.
 # The full project (~7 GB of MetaHuman / scan content) is NOT mirrored here, only:
-#   - .uproject, Config/, Source/
+#   - .uproject, Config/, Source/, Plugins/MetaHumanAnatomyLayers/
 #   - the specific .uasset files listed in tools/tracked_assets.txt (assets we create or change)
 set -e
 PROJECT="${PROJECT:-/Users/mesmae6/Perforce/maclab_digitalhuman_main/MetaHumanTestCopy2Mac}"
@@ -11,6 +11,13 @@ mkdir -p "$REPO/project/Config" "$REPO/project/Content"
 cp "$PROJECT/MetaHumanTest.uproject" "$REPO/project/"
 cp "$PROJECT"/Config/*.ini "$REPO/project/Config/"
 rsync -a --delete "$PROJECT/Source/" "$REPO/project/Source/"
+
+# Our portable plugin (content + Python tools), without build/cache folders.
+if [[ -d "$PROJECT/Plugins/MetaHumanAnatomyLayers" ]]; then
+  mkdir -p "$REPO/project/Plugins"
+  rsync -a --delete --exclude '__pycache__' --exclude 'Intermediate' --exclude 'Binaries' \
+    "$PROJECT/Plugins/MetaHumanAnatomyLayers/" "$REPO/project/Plugins/MetaHumanAnatomyLayers/"
+fi
 
 # Never publish the Android File Server token.
 sed -i '' -E 's/^SecurityToken=.*/SecurityToken=REDACTED/' "$REPO/project/Config/DefaultEngine.ini"
