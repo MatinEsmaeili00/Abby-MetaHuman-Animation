@@ -46,3 +46,15 @@ Parent class: C++ `ACPP_AbbyCharacter` (a `Pawn` with a `Speed` float that the s
 
 ## Other things in the level
 - About 180 `SM_SM_*` static-mesh muscle actors at (320, 80, 0) (the translucent blue figure). These are static meshes and can't animate.
+
+## Result: anatomy layers follow the run (2026-11-07)
+
+`MuscleMesh` and `SkeletonMesh` use the plugin meshes (MetaHuman bone names) under `Body` with Leader Pose. Simulate at `Speed = 0.85` (Running state):
+
+![run a](screenshots/02_run_side_a.png)
+![run b](screenshots/02_run_side_b.png)
+![run front](screenshots/02_run_front.png)
+
+Still to fix in the retargeted run:
+- The arms cross the midline (Mixamo arm path on a wider MetaHuman torso), so the hands clip into the chest. Needs arm spacing / hand IK in the retarget.
+- The hands look splayed, and Emil's finger bones stick out slightly past Abby's fingers (anatomy skeleton layer).
