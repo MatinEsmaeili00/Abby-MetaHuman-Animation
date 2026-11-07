@@ -146,3 +146,23 @@ Pawn switching: Up possesses `BP_SkeletonModel`. It has no anatomy, timeline or 
 - **Another MetaHuman:** run `build.wire_blueprint("/Game/.../BP_X")` (from `anatomy_layers`). It adds the anatomy meshes and the AnatomyView component. Then add an `AnimationTimelineComp` and give Body an Anim BP derived from `UCPP_LocomotionAnimInstance`, or set the timeline to `SingleClip` with any clip.
 - **A different pawn with different behaviour:** give it its own components. For example, an `AnatomyViewComp` with other `Layers`, or no timeline at all. The same widgets drive whatever the possessed pawn has.
 - **Mocap clip on the timeline:** on the pawn's `AnimationTimelineComp`, set `DriveMode = SingleClip` and `AnimationSequence = Jogging_InTime`.
+
+## Follow-up 1: the slider goes straight to the x-ray skin
+
+Feedback: when the slider moved, there was a stretch where Abby's dithered skin was mixed with the muscles and bones. Now:
+
+- The **Skin** layer switches to the x-ray shell the moment the slider leaves the top (`GhostBelowOpacity = 1`); there's no dithered skin anymore.
+- Muscles and skeleton appear at once (`InnerLayerFadeIn = 0`) instead of fading in.
+- Each layer gets its own share of the slider (`FadeLength`): Skin 0.5, Muscles 1. So the skin → muscle stage takes the top third, and the muscles fade to the skeleton over the remaining two thirds. The buttons go to 0 / 0.333 / 1.
+
+![](screenshots/06_slider_snap.png)
+
+Left: the old mixed stage (depth 0.2). Right: now, the first moment the slider moves (depth 0.02).
+
+Depth → layer opacity (Skin, Muscles, Skeleton), measured in PIE:
+
+| depth | 0 | 0.01 | 0.2 | 0.333 | 0.5 | 0.75 | 1 |
+|---|---|---|---|---|---|---|---|
+| Skin | 1 (MetaHuman) | x-ray | x-ray | x-ray | x-ray | x-ray | x-ray |
+| Muscles | hidden | 1 | 1 | 1 | 0.75 | 0.38 | hidden |
+| Skeleton | hidden | 1 | 1 | 1 | 1 | 1 | 1 |

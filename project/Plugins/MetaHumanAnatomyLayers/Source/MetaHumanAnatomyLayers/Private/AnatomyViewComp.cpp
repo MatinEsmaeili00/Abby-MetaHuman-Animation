@@ -35,7 +35,8 @@ UAnatomyViewComp::UAnatomyViewComp()
 
 	FAnatomyLayerDef& Skin = Layers.Emplace_GetRef(TEXT("Skin"), TArray<FName>{ TEXT("SkinPart") });
 	Skin.GhostMaterial = TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/MetaHumanAnatomyLayers/Anatomy/Materials/M_Anatomy_XRay.M_Anatomy_XRay")));
-	Skin.GhostBelowOpacity = 0.15f;
+	Skin.GhostBelowOpacity = 1.f; // straight to the x-ray shell as soon as the slider leaves the top: no skin/muscle mix
+	Skin.FadeLength = 0.5f;       // skin -> muscles takes the first third of the slider, muscles -> skeleton the rest
 	FAnatomyLayerDef& Muscles = Layers.Emplace_GetRef(TEXT("Muscles"), TArray<FName>{ TEXT("MuscleMesh"), TEXT("MusclePart") });
 	Muscles.FadeMaterial = TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/MetaHumanAnatomyLayers/Anatomy/Materials/M_Anatomy_MuscleFade.M_Anatomy_MuscleFade")));
 	Layers.Emplace(TEXT("Skeleton"), TArray<FName>{ TEXT("SkeletonMesh"), TEXT("SkeletonPart") });
@@ -200,10 +201,40 @@ void UAnatomyViewComp::RefreshLayers()
 	ApplyDepth(CurrentDepth);
 }
 
+void UAnatomyViewComp::GetLayerSegment(int32 LayerIndex, float& OutStart, float& OutLength) const
+{
+	// Every layer but the innermost owns a stretch of the slider, sized by its FadeLength.
+	float Total = 0.f;
+	for (int32 Index = 0; Index < Layers.Num() - 1; ++Index)
+	{
+		Total += FMath::Max(Layers[Index].FadeLength, 0.01f);
+	}
+	OutStart = 0.f;
+	OutLength = 0.f;
+	if (Total <= 0.f)
+	{
+		return;
+	}
+	for (int32 Index = 0; Index < LayerIndex && Index < Layers.Num() - 1; ++Index)
+	{
+		OutStart += FMath::Max(Layers[Index].FadeLength, 0.01f) / Total;
+	}
+	if (LayerIndex < Layers.Num() - 1)
+	{
+		OutLength = FMath::Max(Layers[LayerIndex].FadeLength, 0.01f) / Total;
+	}
+	OutStart = FMath::Clamp(OutStart, 0.f, 1.f);
+}
+
 float UAnatomyViewComp::GetLayerDepth(int32 LayerIndex) const
 {
-	const int32 Num = Layers.Num();
-	return Num <= 1 ? 0.f : FMath::Clamp(static_cast<float>(LayerIndex) / static_cast<float>(Num - 1), 0.f, 1.f);
+	if (Layers.Num() <= 1)
+	{
+		return 0.f;
+	}
+	float Start = 0.f, Length = 0.f;
+	GetLayerSegment(FMath::Clamp(LayerIndex, 0, Layers.Num() - 1), Start, Length);
+	return Start;
 }
 
 float UAnatomyViewComp::GetLayerOpacity(int32 LayerIndex) const
@@ -219,21 +250,22 @@ float UAnatomyViewComp::ComputeLayerOpacity(int32 LayerIndex, float Depth) const
 		return 1.f - Depth;
 	}
 
-	const float Segment = 1.f / static_cast<float>(Num - 1);
-
-	// Layer k fades out across [k, k+1] * Segment; the innermost layer never fades out.
-	const float FadeOut = (LayerIndex == Num - 1)
+	// Layer k fades out across its own stretch of the slider; the innermost layer never fades out.
+	float Start = 0.f, Length = 0.f;
+	GetLayerSegment(LayerIndex, Start, Length);
+	const float FadeOut = (LayerIndex == Num - 1 || Length <= 0.f)
 		? 1.f
-		: 1.f - FMath::Clamp((Depth - LayerIndex * Segment) / Segment, 0.f, 1.f);
+		: 1.f - FMath::Clamp((Depth - Start) / Length, 0.f, 1.f);
 
-	// Inner layers fade in while the outer one starts to go, so muscles that are bigger than the skin
-	// don't pop through it the moment the slider moves.
+	// Inner layers appear while the outermost one starts to go (InnerLayerFadeIn = 0: as soon as the slider moves).
 	float FadeIn = 1.f;
 	if (LayerIndex > 0)
 	{
+		float FirstStart = 0.f, FirstLength = 0.f;
+		GetLayerSegment(0, FirstStart, FirstLength);
 		FadeIn = InnerLayerFadeIn <= 0.f
-			? (Depth > 0.f ? 1.f : 0.f)
-			: FMath::Clamp(Depth / (InnerLayerFadeIn * Segment), 0.f, 1.f);
+			? (Depth > KINDA_SMALL_NUMBER ? 1.f : 0.f)
+			: FMath::Clamp(Depth / (InnerLayerFadeIn * FirstLength), 0.f, 1.f);
 	}
 
 	return FadeOut * FadeIn;
@@ -292,7 +324,7 @@ void UAnatomyViewComp::ApplyOpacity(FAnatomyFadeTarget& Target, float Opacity, U
 	}
 
 	const bool bGroom = AnatomyView::IsGroom(Mesh);
-	const bool bGhost = Ghost && GhostBelowOpacity > 0.f && Opacity <= GhostBelowOpacity;
+	const bool bGhost = Ghost && GhostBelowOpacity > 0.f && Opacity < AnatomyView::Opaque && Opacity <= GhostBelowOpacity;
 
 	// Hair strands don't dither well and have no shell look: they go away early.
 	const bool bHide = bGroom

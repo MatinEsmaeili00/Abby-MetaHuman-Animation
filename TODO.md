@@ -44,6 +44,8 @@ Write-up: [docs/03-ui-sliders.md](docs/03-ui-sliders.md). Architecture kept: the
 - [x] Controller: `Super::BeginPlay`, placeholder-manager lookup fix, speed slider back, `SwitchPawn` for `WB_PawnSwitcher`
 - [x] C++ cleanup: removed editor-only `UCPP_WBP_SpeedSlider` (+ `UMGEditor` dependency), stray includes, null-safe mouse component with pitch clamp
 - [x] Verified in PIE: anatomy sweep, timeline scrub / reverse / pause, speed, pawn switch and back ([shots](docs/03-ui-sliders.md#step-5-verified-in-pie))
+- [x] Follow-up: slider goes straight from skin to the x-ray shell (no dithered skin / muscle mix); slider shares via `FadeLength` (skin 1/3, muscles 2/3)
+- [x] Follow-up: hunched back / dropped shoulders fixed. The retarget pose had auto-aligned Abby's torso to Mixamo's straight spine; new `RTG_Mixamo_To_Abby_Posture` with pose `Upright` and `*_Upright` clips ([docs](docs/02-animation.md#follow-up-hunched-back-and-dropped-shoulders-fixed-jobs-4148))
 - [ ] Optional: keyboard shortcuts (Space = play / pause, ← / → = step) through Enhanced Input actions in the controller
 - [ ] Optional: full-body skeleton (Emil is upper body only). Attach `BP_SkeletonModel`'s leg bones (femur, tibia, fibula, patella, foot) rigidly to Abby's thigh / calf / foot bones
 - [ ] Optional: labels on the anatomy and timeline buttons, and a "Gait cycle 42%" text (`TimeText`, an optional `BindWidget` in the timeline widget)
@@ -51,6 +53,7 @@ Write-up: [docs/03-ui-sliders.md](docs/03-ui-sliders.md). Architecture kept: the
 - [ ] Perforce: the editor may have opened `M_Anatomy_MuscleTest` (a deleted test asset) for add. Revert it if `p4 opened` lists it
 
 ## Housekeeping
+- [ ] `ABP_Abby_Enhanced` (the Part 2 sync-group version, not used any more) still plays the old `_Sync` clips; switch it to the `_Upright` clips or delete it
 - [x] Python remote execution turned back **off** (it can't work on macOS: a socket bound to 127.0.0.1 never receives multicast). The editor bridge is `tools/claude_bridge.py`, started by `tools/launch_editor.sh`
 - [x] `BP_MH_CH_Abby8` EventTick cast to `ABP_Abby` removed (the auto-rotate stays)
 - [ ] Perforce: `BP_MH_CH_Abby8.uasset` was made writable locally (not checked out), and the new plugin and assets sit in the Uncontrolled changelist. Run `p4 reconcile` / submit when ready

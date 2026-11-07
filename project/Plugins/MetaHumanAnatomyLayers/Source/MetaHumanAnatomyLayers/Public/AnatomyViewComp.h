@@ -43,9 +43,14 @@ struct METAHUMANANATOMYLAYERS_API FAnatomyLayerDef
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Anatomy")
 	TSoftObjectPtr<UMaterialInterface> GhostMaterial;
 
-	/** 0 = no ghost (the layer just disappears). */
+	/** 0 = no ghost (the layer just disappears). 1 = switch to the ghost as soon as the layer starts to fade
+	 *  (no dithered in-between where this layer and the ones inside it mix). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Anatomy", meta=(ClampMin="0", ClampMax="1"))
 	float GhostBelowOpacity = 0.f;
+
+	/** Share of the slider this layer's transition takes, relative to the other layers (the innermost layer has none). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Anatomy", meta=(ClampMin="0.01"))
+	float FadeLength = 1.f;
 };
 
 /** How one material slot is faded. */
@@ -138,9 +143,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Anatomy", meta=(ClampMin="0.01"))
 	float TransitionSpeed = 1.5f;
 
-	/** Inner layers fade in over this fraction of the first transition (0 = pop in at once). */
+	/** Inner layers fade in over this fraction of the first transition (0 = they appear as soon as the slider moves). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Anatomy", meta=(ClampMin="0", ClampMax="1"))
-	float InnerLayerFadeIn = 0.35f;
+	float InnerLayerFadeIn = 0.f;
 
 	/** Grooms (hair strands) are hidden once their layer is below this opacity: dithered strands look noisy. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Anatomy", meta=(ClampMin="0", ClampMax="1"))
@@ -192,6 +197,8 @@ private:
 	void SetMaterials(FAnatomyFadeTarget& Target, FAnatomyFadeTarget::EMaterials Materials, UMaterialInterface* Ghost);
 	int32 FindLayerFor(const UMeshComponent* Mesh) const;
 	float ComputeLayerOpacity(int32 LayerIndex, float Depth) const;
+	/** Where layer LayerIndex starts fading out and how long that takes, in reveal depth (from the FadeLength weights). */
+	void GetLayerSegment(int32 LayerIndex, float& OutStart, float& OutLength) const;
 
 	UPROPERTY(Transient)
 	TArray<FAnatomyLayerRuntime> Runtime;

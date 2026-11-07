@@ -12,3 +12,7 @@ Blueprints/BP_SpeedSlider.uasset
 Widget/WB_AmationTimeline.uasset
 Widget/WB_AnatomyViewSwitcher.uasset
 Widget/WB_PawnSwitcher.uasset
+Abby_Animation/Posture/RTG_Mixamo_To_Abby_Posture.uasset
+Abby_Animation/Posture/Abby_Walking_Anim_Upright.uasset
+Abby_Animation/Posture/Abby_Jogging_Upright.uasset
+Abby_Animation/Posture/Abby_Running__2__Upright.uasset
