@@ -36,7 +36,8 @@ UAnatomyViewComp::UAnatomyViewComp()
 	FAnatomyLayerDef& Skin = Layers.Emplace_GetRef(TEXT("Skin"), TArray<FName>{ TEXT("SkinPart") });
 	Skin.GhostMaterial = TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/MetaHumanAnatomyLayers/Anatomy/Materials/M_Anatomy_XRay.M_Anatomy_XRay")));
 	Skin.GhostBelowOpacity = 0.15f;
-	Layers.Emplace(TEXT("Muscles"),  TArray<FName>{ TEXT("MuscleMesh"), TEXT("MusclePart") });
+	FAnatomyLayerDef& Muscles = Layers.Emplace_GetRef(TEXT("Muscles"), TArray<FName>{ TEXT("MuscleMesh"), TEXT("MusclePart") });
+	Muscles.FadeMaterial = TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/MetaHumanAnatomyLayers/Anatomy/Materials/M_Anatomy_MuscleFade.M_Anatomy_MuscleFade")));
 	Layers.Emplace(TEXT("Skeleton"), TArray<FName>{ TEXT("SkeletonMesh"), TEXT("SkeletonPart") });
 }
 
@@ -85,6 +86,7 @@ void UAnatomyViewComp::BuildRuntime()
 		Runtime[LayerIndex].LayerName = Layers[LayerIndex].LayerName;
 		Runtime[LayerIndex].Ghost = Layers[LayerIndex].GhostMaterial.LoadSynchronous();
 		Runtime[LayerIndex].GhostBelowOpacity = Layers[LayerIndex].GhostBelowOpacity;
+		Runtime[LayerIndex].FadeMaterial = Layers[LayerIndex].FadeMaterial.LoadSynchronous();
 	}
 
 	AActor* Owner = GetOwner();
@@ -131,6 +133,15 @@ void UAnatomyViewComp::BuildRuntime()
 			Slot.Original = Mesh->GetMaterial(SlotIndex);
 			if (!Slot.Original)
 			{
+				continue;
+			}
+
+			if (UMaterialInterface* LayerFade = Runtime[LayerIndex].FadeMaterial)
+			{
+				// The layer brings its own fade material (the mesh's material can't fade itself).
+				Slot.Fader = UMaterialInstanceDynamic::Create(LayerFade, Mesh);
+				Slot.Parameter = FadeParameterName;
+				Slot.FullValue = 1.f;
 				continue;
 			}
 

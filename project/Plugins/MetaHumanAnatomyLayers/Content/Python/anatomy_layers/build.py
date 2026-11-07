@@ -301,46 +301,29 @@ def rename_bones(mesh, bone_map):
 
 
 # ---------------------------------------------------------------------------------------- build
-FADE_MATERIALS = [DEST_DIR + "/Materials/M_Anatomy_Muscle", DEST_DIR + "/Materials/M_Anatomy_BlockColour"]
 HIDDEN_MATERIAL = DEST_DIR + "/Materials/M_Anatomy_Hidden"
 DITHER_FUNCTION = "/Engine/Functions/Engine_MaterialFunctions02/Utility/DitherTemporalAA"
 
 
-def add_fade_to_materials(paths=None):
-    """Give the anatomy materials the MetaHuman-style "Fade" scalar (1 = visible, 0 = gone, dithered)
-    so UAnatomyViewComp can fade them, and create the always-invisible M_Anatomy_Hidden."""
+def create_hidden_material(path=HIDDEN_MATERIAL):
+    """Always-invisible material, used by UAnatomyViewComp for slots that have no fade parameter
+    (e.g. the MetaHuman eye occlusion shell) while their layer fades."""
     mel = unreal.MaterialEditingLibrary
-    dither = unreal.load_asset(DITHER_FUNCTION)
-    for path in paths or FADE_MATERIALS:
+    if EAL.does_asset_exist(path):
         mat = unreal.load_asset(path)
-        if "Fade" in [str(n) for n in mel.get_scalar_parameter_names(mat)]:
-            continue
-        mat.set_editor_property("blend_mode", unreal.BlendMode.BLEND_MASKED)
-        # DitherTemporalAA outputs Fade + noise - 0.5; clipping at 0.5 makes coverage == Fade (0.333 would leave 17% at Fade 0)
-        mat.set_editor_property("opacity_mask_clip_value", 0.5)
-        param = mel.create_material_expression(mat, unreal.MaterialExpressionScalarParameter, -700, 700)
-        param.set_editor_property("parameter_name", "Fade")
-        param.set_editor_property("default_value", 1.0)
-        param.set_editor_property("group", "Anatomy")
-        call = mel.create_material_expression(mat, unreal.MaterialExpressionMaterialFunctionCall, -450, 700)
-        call.set_material_function(dither)
-        mel.connect_material_expressions(param, "", call, "Alpha Threshold")
-        mel.connect_material_property(call, "", unreal.MaterialProperty.MP_OPACITY_MASK)
-        mel.recompile_material(mat)
-        EAL.save_loaded_asset(mat, only_if_is_dirty=False)
-
-    if not EAL.does_asset_exist(HIDDEN_MATERIAL):
-        folder, name = HIDDEN_MATERIAL.rsplit("/", 1)
+    else:
+        folder, name = path.rsplit("/", 1)
         mat = unreal.AssetToolsHelpers.get_asset_tools().create_asset(name, folder, unreal.Material, unreal.MaterialFactoryNew())
         mat.set_editor_property("blend_mode", unreal.BlendMode.BLEND_MASKED)
         zero = mel.create_material_expression(mat, unreal.MaterialExpressionConstant, -300, 200)
         zero.set_editor_property("r", 0.0)
         mel.connect_material_property(zero, "", unreal.MaterialProperty.MP_OPACITY_MASK)
         mat.set_editor_property("two_sided", True)
-        mat.set_editor_property("used_with_skeletal_mesh", True)
-        mel.recompile_material(mat)
-        EAL.save_loaded_asset(mat, only_if_is_dirty=False)
-
+    mat.set_editor_property("used_with_skeletal_mesh", True)
+    mat.set_editor_property("used_with_hair_strands", True)  # also lands on groom slots (facial hair)
+    mel.recompile_material(mat)
+    EAL.save_loaded_asset(mat, only_if_is_dirty=False)
+    return mat
 
 XRAY_MATERIAL = DEST_DIR + "/Materials/M_Anatomy_XRay"
 
@@ -397,9 +380,66 @@ def create_xray_material(path=XRAY_MATERIAL, overwrite=False):
     return mat
 
 
+MUSCLE_FADE_MATERIAL = DEST_DIR + "/Materials/M_Anatomy_MuscleFade"
+
+
+def create_muscle_fade_material(path=MUSCLE_FADE_MATERIAL, overwrite=False):
+    """Fresh masked muscle material (muscle red + tendon mask) with a dithered "Fade" (1 = visible, 0 = gone).
+    UAnatomyViewComp uses it for the Muscles layer only while that layer is fading; at full opacity the
+    detailed original muscle material is shown. (Masking added later to the Emil-derived material never
+    clipped, so the fade lives in a material built from scratch.)"""
+    mel = unreal.MaterialEditingLibrary
+    if EAL.does_asset_exist(path):
+        if not overwrite:
+            return unreal.load_asset(path)
+        EAL.delete_asset(path)
+    folder, name = path.rsplit("/", 1)
+    mat = unreal.AssetToolsHelpers.get_asset_tools().create_asset(name, folder, unreal.Material, unreal.MaterialFactoryNew())
+    mat.set_editor_property("blend_mode", unreal.BlendMode.BLEND_MASKED)
+    mat.set_editor_property("opacity_mask_clip_value", 0.5)  # DitherTemporalAA: coverage == Fade at clip 0.5
+    mat.set_editor_property("used_with_skeletal_mesh", True)
+
+    def expr(cls, x, y, **props):
+        e = mel.create_material_expression(mat, cls, x, y)
+        for k, v in props.items():
+            e.set_editor_property(k, v)
+        return e
+
+    mask = expr(unreal.MaterialExpressionTextureSampleParameter2D, -900, 0, parameter_name="Mask",
+                texture=unreal.load_asset(DEST_DIR + "/Textures/T_Anatomy_Muscle_Mask"))
+    muscle = expr(unreal.MaterialExpressionVectorParameter, -900, -300, parameter_name="muscle_COLOR",
+                  default_value=unreal.LinearColor(0.20, 0.025, 0.02, 1.0))
+    tendon = expr(unreal.MaterialExpressionVectorParameter, -900, -150, parameter_name="Tendons_COLOR",
+                  default_value=unreal.LinearColor(0.55, 0.50, 0.45, 1.0))
+    base = expr(unreal.MaterialExpressionLinearInterpolate, -500, -200)
+    mel.connect_material_expressions(muscle, "", base, "A")
+    mel.connect_material_expressions(tendon, "", base, "B")
+    mel.connect_material_expressions(mask, "R", base, "Alpha")
+    mel.connect_material_property(base, "", unreal.MaterialProperty.MP_BASE_COLOR)
+
+    r_muscle = expr(unreal.MaterialExpressionScalarParameter, -900, 250, parameter_name="muscle_ROUGHNESS", default_value=0.45)
+    r_tendon = expr(unreal.MaterialExpressionScalarParameter, -900, 350, parameter_name="Tendons_ROUGHNESS", default_value=0.3)
+    rough = expr(unreal.MaterialExpressionLinearInterpolate, -500, 300)
+    mel.connect_material_expressions(r_muscle, "", rough, "A")
+    mel.connect_material_expressions(r_tendon, "", rough, "B")
+    mel.connect_material_expressions(mask, "R", rough, "Alpha")
+    mel.connect_material_property(rough, "", unreal.MaterialProperty.MP_ROUGHNESS)
+
+    fade = expr(unreal.MaterialExpressionScalarParameter, -700, 600, parameter_name="Fade", default_value=1.0, group="Anatomy")
+    dither = expr(unreal.MaterialExpressionMaterialFunctionCall, -450, 600)
+    dither.set_material_function(unreal.load_asset(DITHER_FUNCTION))
+    mel.connect_material_expressions(fade, "", dither, "Alpha Threshold")
+    mel.connect_material_property(dither, "", unreal.MaterialProperty.MP_OPACITY_MASK)
+
+    mel.recompile_material(mat)
+    EAL.save_loaded_asset(mat, only_if_is_dirty=False)
+    return mat
+
+
 def build_all(metahuman_body=DEFAULT_METAHUMAN_BODY, overwrite=False):
     material_map = copy_materials(overwrite=overwrite)
-    add_fade_to_materials()
+    create_hidden_material()
+    create_muscle_fade_material()
     create_xray_material()
     bone_map = compute_bone_map(unreal.load_asset(MESH_SOURCES[0][0]), unreal.load_asset(metahuman_body))
     meshes = import_meshes(material_map, bone_map, overwrite=overwrite)

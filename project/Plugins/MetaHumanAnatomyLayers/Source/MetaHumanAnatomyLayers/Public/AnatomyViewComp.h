@@ -33,6 +33,11 @@ struct METAHUMANANATOMYLAYERS_API FAnatomyLayerDef
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Anatomy")
 	TArray<FName> ComponentNamesOrTags;
 
+	/** Optional: material used while this layer fades, instead of a dynamic instance of each mesh's own material.
+	 *  For meshes whose materials can't fade themselves. Needs a "Fade" scalar (1 = visible, 0 = gone). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Anatomy")
+	TSoftObjectPtr<UMaterialInterface> FadeMaterial;
+
 	/** Optional "x-ray" shell: once this layer has faded to GhostBelowOpacity or less, its meshes switch to this
 	 *  material instead of disappearing, so the outline stays visible (e.g. the legs where there's no inner layer). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Anatomy")
@@ -84,6 +89,7 @@ struct FAnatomyLayerRuntime
 	UPROPERTY() FName LayerName;
 	UPROPERTY() TArray<FAnatomyFadeTarget> Targets;
 	UPROPERTY() TObjectPtr<UMaterialInterface> Ghost = nullptr;
+	UPROPERTY() TObjectPtr<UMaterialInterface> FadeMaterial = nullptr;
 	float GhostBelowOpacity = 0.f;
 	float Opacity = 1.f;
 };
