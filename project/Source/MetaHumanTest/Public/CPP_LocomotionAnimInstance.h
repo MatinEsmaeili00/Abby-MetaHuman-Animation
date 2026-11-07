@@ -57,6 +57,14 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Locomotion")
 	bool bReadSpeedFromPawn = true;
 
+	/** Straighten the neck by this much (degrees) at full run / full jog; the head turns back the same amount so the
+	 *  gaze stays level. Fed to two Transform (Modify) Bone nodes (neck_01, head) after the gait blend. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Locomotion|Posture")
+	float NeckUprightAtRun = 12.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Locomotion|Posture")
+	float NeckUprightAtJog = 6.f;
+
 	/** Speed 0..1 to blend toward (walk ... run). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Locomotion")
 	float TargetSpeed = 0.f;
@@ -92,6 +100,14 @@ public:
 
 	UPROPERTY(Transient, BlueprintReadOnly, Category="Locomotion|Output")
 	float JogRunAlpha = 0.f;
+
+	/** Additive bone-space rotation for neck_01 (straightens the neck while jogging / running). */
+	UPROPERTY(Transient, BlueprintReadOnly, Category="Locomotion|Output")
+	FRotator NeckCorrection = FRotator::ZeroRotator;
+
+	/** Additive bone-space rotation for head (cancels NeckCorrection's tilt so the gaze stays level). */
+	UPROPERTY(Transient, BlueprintReadOnly, Category="Locomotion|Output")
+	FRotator HeadCorrection = FRotator::ZeroRotator;
 
 	// IAnimationTimelineSource
 	virtual float GetTimelineCycleLength() const override { return CycleLength; }

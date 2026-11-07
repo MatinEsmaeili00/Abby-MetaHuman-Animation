@@ -16,3 +16,9 @@ Abby_Animation/Posture/RTG_Mixamo_To_Abby_Posture.uasset
 Abby_Animation/Posture/Abby_Walking_Anim_Upright.uasset
 Abby_Animation/Posture/Abby_Jogging_Upright.uasset
 Abby_Animation/Posture/Abby_Running__2__Upright.uasset
+Widget/WB_MuscleInfo.uasset
+MadisonTesting/BeauMHCharacter/BP_Beau_Pawn.uasset
+MadisonTesting/BeauMHCharacter/Animation/ABP_Beau_Timeline.uasset
+MadisonTesting/BeauMHCharacter/Animation/Beau_Walking_Anim_Upright.uasset
+MadisonTesting/BeauMHCharacter/Animation/Beau_Jogging_Upright.uasset
+MadisonTesting/BeauMHCharacter/Animation/Beau_Running__2__Upright.uasset

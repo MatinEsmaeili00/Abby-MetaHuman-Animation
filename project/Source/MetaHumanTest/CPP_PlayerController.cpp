@@ -3,6 +3,8 @@
 #include "CPP_MouseFunctionComp.h"
 #include "CPP_PlayerPlaceHolderManagerA.h"
 #include "CPP_UW_AnatomyViewSwitcher.h"
+#include "CPP_UW_MuscleInfo.h"
+#include "AnatomyPickerComp.h"
 #include "CPP_UW_PawnSwitcher.h"
 #include "CPP_UW_SpeedSlider.h"
 #include "EnhancedInputComponent.h"
@@ -39,6 +41,7 @@ void ACPP_PlayerController::BeginPlay()
 	TimelineWidget = AddWidget(TimelineWidgetClass);
 	AnatomyViewSwitcherWidget = AddWidget(AnatomyViewSwitcherWidgetClass);
 	PawnSwitcherWidget = AddWidget(PawnSwitcherWidgetClass);
+	MuscleInfoWidget = AddWidget(MuscleInfoWidgetClass, /*ZOrder*/ 20);
 
 	// Placeholders (was looking for APlayerCameraManager, so the manager was never found).
 	if (ACPP_PlayerPlaceHolderManagerA* PlaceHolderManager = Cast<ACPP_PlayerPlaceHolderManagerA>(
@@ -122,6 +125,42 @@ void ACPP_PlayerController::HandleMouseZoom(const FInputActionValue& Value)
 	if (UCPP_MouseFunctionComp* MouseComp = GetMouseFunctionComp())
 	{
 		MouseComp->ZoomCamera(Value.Get<float>());
+	}
+}
+
+void ACPP_PlayerController::PlayerTick(float DeltaTime)
+{
+	Super::PlayerTick(DeltaTime);
+	UpdateMusclePicking();
+}
+
+void ACPP_PlayerController::UpdateMusclePicking()
+{
+	UAnatomyPickerComp* Picker = GetPawn() ? GetPawn()->FindComponentByClass<UAnatomyPickerComp>() : nullptr;
+	if (!Picker)
+	{
+		return;
+	}
+
+	// Hover: the ray from the camera through the mouse (not while orbiting with the right button).
+	FVector RayOrigin, RayDirection;
+	if (!IsInputKeyDown(EKeys::RightMouseButton) && DeprojectMousePositionToWorld(RayOrigin, RayDirection))
+	{
+		Picker->UpdateHover(RayOrigin, RayDirection);
+	}
+
+	// Click (press + release without dragging, since a left drag pans the camera) selects.
+	FVector2D Mouse;
+	if (GetMousePosition(Mouse.X, Mouse.Y))
+	{
+		if (WasInputKeyJustPressed(EKeys::LeftMouseButton))
+		{
+			LeftPressPosition = Mouse;
+		}
+		else if (WasInputKeyJustReleased(EKeys::LeftMouseButton) && FVector2D::Distance(Mouse, LeftPressPosition) <= ClickMaxDragPixels)
+		{
+			Picker->SelectHovered();
+		}
 	}
 }
 

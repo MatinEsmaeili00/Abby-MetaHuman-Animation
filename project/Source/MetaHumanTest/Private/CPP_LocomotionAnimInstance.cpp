@@ -124,6 +124,11 @@ void UCPP_LocomotionAnimInstance::UpdateOutputs()
 	const float RunWeight = JogRunAlpha;
 	CycleLength = WalkWeight * Walk.Duration(CycleIndex) + JogWeight * Jog.Duration(CycleIndex) + RunWeight * Run.Duration(CycleIndex);
 
+	// MetaHuman neck / spine bones bend forward around local Z (yaw +); negative yaw straightens the neck.
+	const float NeckDegrees = JogWeight * NeckUprightAtJog + RunWeight * NeckUprightAtRun;
+	NeckCorrection = FRotator(0.f, -NeckDegrees, 0.f);
+	HeadCorrection = FRotator(0.f, NeckDegrees, 0.f);
+
 	WalkTime = Walk.TimeAt(CycleIndex, Phase);
 	JogTime = Jog.TimeAt(CycleIndex, Phase);
 	RunTime = Run.TimeAt(CycleIndex, Phase);

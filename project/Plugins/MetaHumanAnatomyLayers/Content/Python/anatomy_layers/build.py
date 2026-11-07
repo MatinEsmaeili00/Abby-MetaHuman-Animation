@@ -436,6 +436,98 @@ def create_muscle_fade_material(path=MUSCLE_FADE_MATERIAL, overwrite=False):
     return mat
 
 
+HIGHLIGHT_MATERIAL = DEST_DIR + "/Materials/M_Anatomy_MuscleHighlight"
+
+
+def create_highlight_material(path=HIGHLIGHT_MATERIAL, overwrite=False):
+    """Highlight material for the muscle mesh: the vertex colour's red channel holds the muscle ID (byte = id,
+    read in the material as round(R * 255), no sRGB conversion). The muscle whose ID equals HoverId glows in
+    HoverColor, SelectedId in SelectedColor; everything else is invisible. UAnatomyPickerComp draws it with a
+    highlight copy of the muscle mesh. Depth test is off: the copy sits exactly on the opaque muscles, so with depth
+    testing it would z-fight and mostly disappear."""
+    mel = unreal.MaterialEditingLibrary
+    if EAL.does_asset_exist(path):
+        if not overwrite:
+            return unreal.load_asset(path)
+        EAL.delete_asset(path)
+    folder, name = path.rsplit("/", 1)
+    mat = unreal.AssetToolsHelpers.get_asset_tools().create_asset(name, folder, unreal.Material, unreal.MaterialFactoryNew())
+    mat.set_editor_property("blend_mode", unreal.BlendMode.BLEND_TRANSLUCENT)
+    mat.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
+    mat.set_editor_property("used_with_skeletal_mesh", True)
+    mat.set_editor_property("disable_depth_test", True)
+
+    def expr(cls, x, y, **props):
+        e = mel.create_material_expression(mat, cls, x, y)
+        for k, v in props.items():
+            e.set_editor_property(k, v)
+        return e
+
+    def op(cls, a, b, x, y, an="", bn=""):
+        e = expr(cls, x, y)
+        mel.connect_material_expressions(a, an, e, "A")
+        if b is not None:
+            mel.connect_material_expressions(b, bn, e, "B")
+        return e
+
+    vc = expr(unreal.MaterialExpressionVertexColor, -1400, 0)
+    k255 = expr(unreal.MaterialExpressionConstant, -1400, 120, r=255.0)
+    raw = op(unreal.MaterialExpressionMultiply, vc, k255, -1250, 0, an="R")
+    mid = expr(unreal.MaterialExpressionRound, -1100, 0)
+    mel.connect_material_expressions(raw, "", mid, "")
+
+    def mask(param, default, y):
+        p = expr(unreal.MaterialExpressionScalarParameter, -1100, y, parameter_name=param, default_value=default, group="Highlight")
+        diff = op(unreal.MaterialExpressionSubtract, mid, p, -950, y)
+        a = expr(unreal.MaterialExpressionAbs, -820, y)
+        mel.connect_material_expressions(diff, "", a, "")
+        s = expr(unreal.MaterialExpressionSaturate, -700, y)
+        mel.connect_material_expressions(a, "", s, "")
+        m = expr(unreal.MaterialExpressionOneMinus, -580, y)
+        mel.connect_material_expressions(s, "", m, "")
+        return m
+
+    hover = mask("HoverId", -1.0, 200)
+    sel = mask("SelectedId", -1.0, 400)
+    hc = expr(unreal.MaterialExpressionVectorParameter, -580, 600, parameter_name="HoverColor", default_value=unreal.LinearColor(0.2, 0.85, 1.0, 1.0), group="Highlight")
+    sc = expr(unreal.MaterialExpressionVectorParameter, -580, 750, parameter_name="SelectedColor", default_value=unreal.LinearColor(1.0, 0.55, 0.1, 1.0), group="Highlight")
+    eh = op(unreal.MaterialExpressionMultiply, hc, hover, -420, 600)
+    es = op(unreal.MaterialExpressionMultiply, sc, sel, -420, 750)
+    emis = op(unreal.MaterialExpressionAdd, eh, es, -280, 650)
+    fres = expr(unreal.MaterialExpressionFresnel, -420, 900, exponent=2.0)
+    boost = expr(unreal.MaterialExpressionConstant, -420, 1000, r=0.6)
+    rim = op(unreal.MaterialExpressionAdd, fres, boost, -280, 950)
+    glow = op(unreal.MaterialExpressionMultiply, emis, rim, -150, 700)
+    mel.connect_material_property(glow, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+    ha = expr(unreal.MaterialExpressionScalarParameter, -580, 1100, parameter_name="HoverOpacity", default_value=0.55, group="Highlight")
+    sa = expr(unreal.MaterialExpressionScalarParameter, -580, 1200, parameter_name="SelectedOpacity", default_value=0.5, group="Highlight")
+    oh = op(unreal.MaterialExpressionMultiply, hover, ha, -420, 1100)
+    os_ = op(unreal.MaterialExpressionMultiply, sel, sa, -420, 1200)
+    oa = op(unreal.MaterialExpressionMax, oh, os_, -280, 1150)
+    mel.connect_material_property(oa, "", unreal.MaterialProperty.MP_OPACITY)
+    add_highlight_inflate(mat)
+    mel.recompile_material(mat)
+    EAL.save_loaded_asset(mat, only_if_is_dirty=False)
+    return mat
+
+
+def add_highlight_inflate(mat):
+    """Push the highlight shell out along the normals (Inflate cm) so it sits just in front of the opaque muscle
+    surface it is drawn over; at exactly the same depth the opaque muscles win and the glow disappears."""
+    mel = unreal.MaterialEditingLibrary
+    if "Inflate" in [str(n) for n in mel.get_scalar_parameter_names(mat)]:
+        return
+    nrm = mel.create_material_expression(mat, unreal.MaterialExpressionVertexNormalWS, -420, 1400)
+    amt = mel.create_material_expression(mat, unreal.MaterialExpressionScalarParameter, -420, 1500)
+    amt.set_editor_property("parameter_name", "Inflate")
+    amt.set_editor_property("default_value", 0.2)
+    amt.set_editor_property("group", "Highlight")
+    off = mel.create_material_expression(mat, unreal.MaterialExpressionMultiply, -250, 1450)
+    mel.connect_material_expressions(nrm, "", off, "A")
+    mel.connect_material_expressions(amt, "", off, "B")
+    mel.connect_material_property(off, "", unreal.MaterialProperty.MP_WORLD_POSITION_OFFSET)
+
+
 def build_all(metahuman_body=DEFAULT_METAHUMAN_BODY, overwrite=False):
     material_map = copy_materials(overwrite=overwrite)
     create_hidden_material()
@@ -500,17 +592,22 @@ def wire_blueprint(bp_path, layers=None, body_name="Body", add_view_component=Tr
         comp.set_editor_property("relative_scale3d", unreal.Vector(1, 1, 1))
         print(f"{comp_name}: {mesh_path} under {body_name}")
 
-    if add_view_component and hasattr(unreal, "AnatomyViewComp"):
-        hs = handles()
-        if not any(isinstance(obj, unreal.AnatomyViewComp) for _, obj in hs.values()):
+    if add_view_component:
+        # Anatomy View (skin -> muscles -> skeleton slider) and Anatomy Picker (hover / click muscles)
+        for cls_name, comp_name in (("AnatomyViewComp", "AnatomyView"), ("AnatomyPickerComp", "AnatomyPicker")):
+            cls = getattr(unreal, cls_name, None)
+            if cls is None:
+                continue
+            hs = handles()
+            if any(isinstance(obj, cls) for _, obj in hs.values()):
+                continue
             actor_h = sds.k2_gather_subobject_data_for_blueprint(bp)[0]
-            params = unreal.AddNewSubobjectParams(parent_handle=actor_h, new_class=unreal.AnatomyViewComp,
-                                                  blueprint_context=bp)
+            params = unreal.AddNewSubobjectParams(parent_handle=actor_h, new_class=cls, blueprint_context=bp)
             new_h, fail = sds.add_new_subobject(params)
             if not fail.is_empty():
-                raise RuntimeError(f"add AnatomyView failed: {fail}")
-            sds.rename_subobject(new_h, unreal.Text("AnatomyView"))
-            print("AnatomyView component added")
+                raise RuntimeError(f"add {comp_name} failed: {fail}")
+            sds.rename_subobject(new_h, unreal.Text(comp_name))
+            print(f"{comp_name} component added")
     unreal.BlueprintEditorLibrary.compile_blueprint(bp)
     EAL.save_loaded_asset(bp, only_if_is_dirty=False)
     return True

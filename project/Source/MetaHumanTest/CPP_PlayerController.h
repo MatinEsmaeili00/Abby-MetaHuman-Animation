@@ -13,6 +13,8 @@ class UInputAction;
 struct FInputActionValue;
 class UCPP_MouseFunctionComp;
 class UCPP_UW_AnatomyViewSwitcher;
+class UCPP_UW_MuscleInfo;
+class UAnatomyPickerComp;
 class UCPP_UW_PawnSwitcher;
 class UCPP_UW_SpeedSlider;
 class UWCPP_AnimationTimeline;
@@ -58,6 +60,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="UI")
 	TSubclassOf<UCPP_UW_PawnSwitcher> PawnSwitcherWidgetClass;
 
+	/** Muscle name tooltip + info popup (listens to the pawn's UAnatomyPickerComp). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="UI")
+	TSubclassOf<UCPP_UW_MuscleInfo> MuscleInfoWidgetClass;
+
+	/** A left click that moves less than this (pixels) selects the hovered muscle; more is a pan drag. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Input")
+	float ClickMaxDragPixels = 6.f;
+
 	// ---------------- Pawn switching (WB_PawnSwitcher) ----------------
 
 	/** Pawns the Up / Down buttons cycle through. A class that isn't in the level yet is spawned at the matching placeholder. */
@@ -74,12 +84,16 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	virtual void SetupInputComponent() override;
+	virtual void PlayerTick(float DeltaTime) override;
 
 	void HandleMouseMove(const FInputActionValue& Value);
 	void HandleMouseZoom(const FInputActionValue& Value);
 
 	/** Mouse orbit / pan / zoom is done by the possessed pawn's component (found fresh, so pawn switches just work). */
 	UCPP_MouseFunctionComp* GetMouseFunctionComp() const;
+
+	/** Hover / click on muscles is done by the possessed pawn's picker component (if it has one). */
+	void UpdateMusclePicking();
 
 private:
 	template <typename WidgetT>
@@ -96,6 +110,11 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<UCPP_UW_PawnSwitcher> PawnSwitcherWidget = nullptr;
+
+	UPROPERTY()
+	TObjectPtr<UCPP_UW_MuscleInfo> MuscleInfoWidget = nullptr;
+
+	FVector2D LeftPressPosition = FVector2D::ZeroVector;
 
 	/** One instance per SwitchablePawnClasses entry, created on first use (kept alive so switching back is instant). */
 	UPROPERTY()

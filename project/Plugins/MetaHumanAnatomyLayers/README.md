@@ -1,7 +1,7 @@
 # MetaHuman Anatomy Layers (UE 5.8 plugin)
 
 Muscle and skeleton layers that follow a MetaHuman body's animation. There's no extra Anim Blueprint and no per-frame cost.
-It also contains an **Anatomy View** component that peels the character from skin to muscles to skeleton with one slider value, like an anatomy app.
+It also contains an **Anatomy View** component that peels the character from skin to muscles to skeleton with one slider value, like an anatomy app, and an **Anatomy Picker** component that highlights the muscle under the mouse and reports which one was clicked.
 
 ## How it works
 
@@ -24,8 +24,12 @@ With matching bone names, the anatomy meshes use **Leader Pose** on the MetaHuma
 | `/MetaHumanAnatomyLayers/Anatomy/Materials/M_Anatomy_MuscleFade` | Masked muscle material with a dithered `Fade` (1 = visible, 0 = gone), used while the muscle layer fades |
 | `/MetaHumanAnatomyLayers/Anatomy/Materials/M_Anatomy_XRay` | Translucent fresnel "x-ray" shell the skin turns into once it has faded below 15% |
 | `/MetaHumanAnatomyLayers/Anatomy/Materials/M_Anatomy_Hidden` | Always-invisible material for slots that can't fade |
+| `/MetaHumanAnatomyLayers/Anatomy/Materials/M_Anatomy_MuscleHighlight` | Translucent, unlit glow (depth test off) that lights only the muscle whose vertex-colour ID equals `HoverId` (cyan) or `SelectedId` (orange) |
+| `/MetaHumanAnatomyLayers/Anatomy/Data/DA_MuscleAtlas_UpperBody` | `UMuscleAtlas`: 34 muscles (17 per side) with name, side, region, function, role in running, injury note, and 5,192 bone-relative sample points for picking |
 | `Source/MetaHumanAnatomyLayers` → **`UAnatomyViewComp`** ("Anatomy View") | Component for the pawn: `SetRevealDepth(0..1)`, `ShowLayer(i)`, `OnRevealDepthChanged`. Layers are data (`Layers` array: Skin / Muscles / Skeleton by default) |
-| `Content/Python/anatomy_layers/build.py` | Editor tools: `build_all()` re-creates the meshes and materials from an anatomy source; `wire_blueprint()` attaches the layers **and the Anatomy View component** to a MetaHuman Blueprint |
+| `Source/MetaHumanAnatomyLayers` → **`UAnatomyPickerComp`** ("Anatomy Picker") | Component for the pawn: `UpdateHover(ray)`, `SelectHovered()`, `ClearSelection()`, `GetMuscleInfo(id)`, events `OnHoverChanged` / `OnSelectionChanged` |
+| `Content/Python/anatomy_layers/build.py` | Editor tools: `build_all()` re-creates the meshes and materials from an anatomy source; `wire_blueprint()` attaches the layers **and the Anatomy View and Anatomy Picker components** to a MetaHuman Blueprint |
+| `Tools/muscle_atlas/` | Offline muscle labelling: `label_muscles.py` (vertex → muscle), `write_ids.py` (IDs into the FBX vertex colours), `muscle_info.json` (the info text), `muscle_atlas_samples.json` |
 
 Nothing in `Anatomy/` references `/Game`, so the folder works in any project. It's a C++ plugin now (one runtime module, no dependencies beyond Core / Engine), so the project needs to be a C++ project; Unreal builds the module the first time you open it.
 
@@ -44,6 +48,21 @@ How each layer fades:
 - **Hidden meshes:** fully faded meshes are hidden. A hidden `Body` keeps ticking its pose, so the Leader Pose layers keep animating.
 
 **Your own layers:** edit `Layers` on the component. Each entry lists component names or tags (outside → in); the first layer also takes every visible mesh nobody else claims. Each layer can also set its own `FadeMaterial` and `GhostMaterial`.
+
+## Anatomy Picker component
+
+Add **Anatomy Picker** next to Anatomy View (`wire_blueprint` does it). Each tick, your player controller passes it the mouse ray (`DeprojectMousePositionToWorld` → `UpdateHover`) and, on a click, calls `SelectHovered()`. Widgets bind to `OnHoverChanged` / `OnSelectionChanged` and read `GetMuscleInfo(Id)`.
+
+- **Picking:** every muscle's sample points are stored relative to a bone. At runtime they're placed on the animated bones, and the front-most muscle within `PickRadius` (3.5 cm) of the ray wins. There's no collision or physics asset, and it follows any animation.
+- **Only in muscle view:** picking is active while the `Muscles` layer is at least `MinLayerOpacity` (0.5) visible and the skin has already turned to x-ray.
+- **Highlight:** the picker spawns a copy of the muscle mesh (`MuscleHighlight`, tagged `AnatomyIgnore`). It follows the same leader pose and uses `M_Anatomy_MuscleHighlight`, and is visible only while a muscle is hovered or selected. An Overlay Material would have been simpler, but overlays don't render on Leader Pose followers.
+
+**Muscle IDs in vertex colours:** red = `(id + 0.5) / 255` in the FBX. The importer truncates float × 255, and the material reads the byte / 255 with no sRGB conversion, so it decodes `round(VertexColor.R × 255)`. To relabel:
+
+1. Run `label_muscles.py <muscles.fbx> Tools/muscle_atlas <labels.json>`.
+2. Run `write_ids.py <muscles.fbx> <labels.json> <muscles_ids.fbx>`.
+3. Re-import the mesh from `<muscles_ids.fbx>` with vertex colours set to *Replace*.
+4. Rebuild the atlas asset (repo jobs 55 and 56).
 
 ## Use it in another project
 
@@ -69,3 +88,5 @@ build.wire_blueprint("/Game/MetaHumans/MyHuman/BP_MyHuman")   # creates or updat
 - These are **upper-body** anatomy meshes (the Emil example covers the torso, arms and upper legs).
 - Emil is a larger male anatomy, so some muscles poke slightly through a smaller body's skin unless the skin is faded or translucent.
 - Emil's finger bones are a little longer than a typical MetaHuman's, so fingertips can poke out.
+- On a much heavier body (for example Beau), the anatomy looks slimmer than the skin, because the bones only set the proportions, not the girth.
+- Muscle labels are rule-based (dominant bone and position), so a few vertices near muscle borders carry a neighbour's ID.

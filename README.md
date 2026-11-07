@@ -1,10 +1,12 @@
 # Abby MetaHuman: Anatomy Layers, Locomotion and UI Sliders
 
-Work log and assets for `BP_MH_CH_Abby8` (UE 5.8):
+Work log and assets for `BP_MH_CH_Abby8` and a second character, Beau (UE 5.8):
 
 - **Layers:** every layer (MetaHuman body, face, hair, muscle mesh, skeleton mesh) follows the same walk / jog / run.
 - **Anatomy slider:** peels Abby from skin to muscles to skeleton, like an anatomy app.
 - **Animation timeline:** plays, pauses, reverses and scrubs the gait cycle.
+- **Muscle info:** in muscle view, hovering a muscle highlights it and shows its name; clicking opens an info panel.
+- **Two people:** Abby and Beau, switched with the pawn switcher; each brings its own components.
 
 ![](docs/screenshots/05_anatomy_slider_sweep.png)
 
@@ -12,10 +14,11 @@ Work log and assets for `BP_MH_CH_Abby8` (UE 5.8):
 - **Part 1, investigation (why the layers were frozen):** [docs/01-investigation.md](docs/01-investigation.md)
 - **Part 2, animation fixes and enhancement:** [docs/02-animation.md](docs/02-animation.md)
 - **Part 3, UI sliders (anatomy view + animation timeline, every step):** [docs/03-ui-sliders.md](docs/03-ui-sliders.md)
+- **Part 4, running neck, Beau, muscle hover / click info:** [docs/04-neck-beau-muscle-picking.md](docs/04-neck-beau-muscle-picking.md)
 
 ## Architecture (kept from the project)
 
-The **PlayerController** owns input and puts the widgets on screen. The **widgets** only forward clicks and drags. The work is done by **components on the pawn**: `UAnatomyViewComp`, `UAnimationTimelineComp` and `UCPP_MouseFunctionComp`.
+The **PlayerController** owns input and puts the widgets on screen. The **widgets** only forward clicks and drags. The work is done by **components on the pawn**: `UAnatomyViewComp`, `UAnatomyPickerComp`, `UAnimationTimelineComp` and `UCPP_MouseFunctionComp`.
 
 Possessing another pawn (the pawn switcher's Up / Down) re-binds every widget to that pawn's components. Same buttons, different behaviour; a widget greys out if the pawn has no matching component.
 
@@ -23,12 +26,14 @@ Possessing another pawn (the pawn switcher's Up / Down) re-binds every widget to
 
 | Asset | Change |
 |---|---|
-| `Plugins/MetaHumanAnatomyLayers/` (**new, portable**) | Muscle and skeleton meshes with MetaHuman bone names (Leader Pose compatible). **C++ module with `UAnatomyViewComp`.** Fade / x-ray / hidden materials. Python build and wire tools. [README](project/Plugins/MetaHumanAnatomyLayers/README.md) |
-| `Source/MetaHumanTest` | Rewritten `UAnimationTimelineComp`; new `IAnimationTimelineSource` and `UCPP_LocomotionAnimInstance`; thin widgets that re-bind on pawn change; controller fixes and pawn switching; cleanup ([details](docs/03-ui-sliders.md#step-3-c-the-components-do-the-work)) |
-| `BP_MH_CH_Abby8` | `MuscleMesh` and `SkeletonMesh` under `Body` (plugin meshes, Leader Pose). New `AnatomyView` component. Body Anim Class = `ABP_Abby_Timeline` |
+| `Plugins/MetaHumanAnatomyLayers/` (**new, portable**) | Muscle and skeleton meshes with MetaHuman bone names (Leader Pose compatible). **C++ module with `UAnatomyViewComp` and `UAnatomyPickerComp`** (muscle hover / select) and the `DA_MuscleAtlas_UpperBody` data asset. Fade / x-ray / hidden / highlight materials. Python build and wire tools, muscle labelling tools. [README](project/Plugins/MetaHumanAnatomyLayers/README.md) |
+| `Source/MetaHumanTest` | Rewritten `UAnimationTimelineComp`; new `IAnimationTimelineSource` and `UCPP_LocomotionAnimInstance` (with the running neck correction); thin widgets that re-bind on pawn change; `UCPP_UW_MuscleInfo` (tooltip and popup); controller fixes, pawn switching and muscle picking; cleanup ([details](docs/03-ui-sliders.md#step-3-c-the-components-do-the-work)) |
+| `BP_MH_CH_Abby8` | `MuscleMesh` and `SkeletonMesh` under `Body` (plugin meshes, Leader Pose). New `AnatomyView` and `AnatomyPicker` components. Body Anim Class = `ABP_Abby_Timeline` |
+| `/Game/MadisonTesting/BeauMHCharacter/` | **New** `BP_Beau_Pawn` (second person, same components as Abby) and `Animation/` (`ABP_Beau_Timeline`, his walk / jog / run clips) ([docs](docs/04-neck-beau-muscle-picking.md#2-beau-as-the-second-person)) |
+| `/Game/Widget/WB_MuscleInfo` (**new**) | Muscle name tooltip and info popup |
 | `/Game/Abby_Animation/Enhanced/` (**new**) | `ABP_Abby_Timeline` (explicit-phase walk / jog / run, driven by the timeline) and `ABP_Abby_Enhanced` (the Part 2 sync-group version), plus walk / jog / run clips with L/R sync markers |
 | `/Game/Abby_Animation/Posture/` (**new**) | `RTG_Mixamo_To_Abby_Posture` (retarget pose `Upright`: no hunched back, shoulders not dropped) and the `*_Upright` walk / jog / run clips that `ABP_Abby_Timeline` plays ([why](docs/02-animation.md#follow-up-hunched-back-and-dropped-shoulders-fixed-jobs-4148)) |
-| `BP_PlayerController`, `BP_SpeedSlider`, `WB_*` widgets | Pawn list for switching, speed range 0..1, recompiled against the new C++ (layouts untouched) |
+| `BP_PlayerController`, `BP_SpeedSlider`, `WB_*` widgets | Pawn list for switching (Abby → Beau → skeleton model), `MuscleInfoWidgetClass`, speed range 0..1, recompiled against the new C++ (layouts untouched) |
 | `ABP_Abby`, original animations, `RTG_AutoGenerated` | Untouched |
 
 ## Repo layout

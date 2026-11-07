@@ -176,6 +176,13 @@ public:
 	UFUNCTION(BlueprintPure, Category="Anatomy")
 	int32 GetNumLayers() const { return Layers.Num(); }
 
+	/** Index of the layer called LayerName, or INDEX_NONE. */
+	UFUNCTION(BlueprintPure, Category="Anatomy")
+	int32 FindLayerIndex(FName LayerName) const
+	{
+		return Layers.IndexOfByPredicate([LayerName](const FAnatomyLayerDef& Def) { return Def.LayerName == LayerName; });
+	}
+
 	UFUNCTION(BlueprintPure, Category="Anatomy")
 	float GetLayerOpacity(int32 LayerIndex) const;
 

@@ -52,6 +52,19 @@ Write-up: [docs/03-ui-sliders.md](docs/03-ui-sliders.md). Architecture kept: the
 - [ ] Widget layout: the anatomy buttons sit partly off-screen in a small viewport (fixed offsets from the centre); anchor them to the left edge
 - [ ] Perforce: the editor may have opened `M_Anatomy_MuscleTest` (a deleted test asset) for add. Revert it if `p4 opened` lists it
 
+## 5. Running neck, second character, muscle info
+Write-up: [docs/04-neck-beau-muscle-picking.md](docs/04-neck-beau-muscle-picking.md)
+- [x] Neck bent forward while running: retarget-pose neck offsets only tilted the face (abandoned). A runtime correction in `UCPP_LocomotionAnimInstance` (`NeckUprightAtJog` / `AtRun` → Modify Bone on `neck_01` and `head`, scaled by the gait weights) brings Abby's run from 26–36° to 10–19° forward of vertical
+- [x] Beau (`/Game/MadisonTesting/BeauMHCharacter/MHC_Beau`) assembled (job 54), `BP_Beau_Pawn` with the same components as Abby, his own retargeted clips and `ABP_Beau_Timeline`; switchable Abby → Beau → skeleton model
+- [x] Beau's retargeted clips had short bones (head sitting on his shoulders); his reference bone lengths are baked in (job 63). His neck correction is 8 / 7°, since his neck is naturally straighter
+- [x] Muscle atlas: 34 muscles (17 per side) labelled per vertex, IDs in the vertex colours, bone-relative sample points, `DA_MuscleAtlas_UpperBody` with info text
+- [x] `UAnatomyPickerComp`: hover (mouse ray against the animated sample points), click to select, active only in muscle view; highlight copy of the muscle mesh with `M_Anatomy_MuscleHighlight`
+- [x] `WB_MuscleInfo`: name tooltip at the mouse and an info popup (what it does / when running / watch out for) with Close
+- [x] Vertex-colour ID fixes: no sRGB on read, importer truncates (write `(id + 0.5) / 255`), highlight depth test off; verified per vertex (job 62) and in PIE
+- [ ] Optional: per-character anatomy fit. The Emil anatomy is slimmer than Beau's build; a scale or morph per character would fill him out
+- [ ] Optional: more muscles / finer labels (the labels are rule-based; a few stray vertices near muscle borders carry a neighbour's ID)
+- [ ] Optional: keep the tooltip inside the viewport near the right / bottom edge
+
 ## Housekeeping
 - [ ] `ABP_Abby_Enhanced` (the Part 2 sync-group version, not used any more) still plays the old `_Sync` clips; switch it to the `_Upright` clips or delete it
 - [x] Python remote execution turned back **off** (it can't work on macOS: a socket bound to 127.0.0.1 never receives multicast). The editor bridge is `tools/claude_bridge.py`, started by `tools/launch_editor.sh`
