@@ -1,0 +1,9 @@
+.DS_Store
+# Unreal build / cache output never belongs here
+Binaries/
+Intermediate/
+DerivedDataCache/
+Saved/
+*.xcworkspace
+*.sln
+*.slnx

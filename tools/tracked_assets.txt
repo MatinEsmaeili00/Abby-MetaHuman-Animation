@@ -1,0 +1,4 @@
+# Content-relative paths of assets created or modified by this work.
+# tools/sync_from_project.sh copies each one into project/Content/.
+MetaHumans/MH_CH_Abby5/BP_MH_CH_Abby8.uasset
+MetaHumans/MH_CH_Abby5/Body/ABP_Abby.uasset
